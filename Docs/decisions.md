@@ -102,6 +102,174 @@ the proper home is EditMode tests against the real types.
 
 ---
 
+## Step 1 results — measured 8 September 2026
+
+Full-map rebuild on the development machine, main-thread synchronous. `LastMeshMs` brackets
+the mesh builder alone; `LastColliderMs` brackets `sharedMesh = null` followed by
+reassignment, which forces Unity to re-cook synchronously — so it is a real bake, and the
+worst case. A production server would bake off-thread via `Physics.BakeMesh`.
+
+| | Build | Cook | Triangles | µs/tri build | µs/tri cook | build : cook |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Vertex, Unity Terrain active | 1.09 ms | 1.39 ms | 8,192 | 0.133 | 0.170 | 0.78 |
+| Vertex, generated mesh | 2.13 ms | 1.39 ms | 8,192 | 0.260 | 0.170 | 1.53 |
+| Cell | 19.17 ms | 8.99 ms | 32,768 | 0.585 | 0.274 | **2.13** |
+
+Triangle counts confirm both meshers exactly: 4,096 cells × 2 for the vertex model, × 8 for
+the cell fan. **The cell figure currently carries zero seam faces** — nothing was flattened
+when this was read — so 32,768 is its floor. Terraced ground adds four triangles per seam
+quad and will push it up.
+
+### The finding
+
+**Mesh generation costs more than collision cooking — 2.13× in the cell model.** That
+contradicts the "collision is the entire budget" hypothesis, which was never measured and is
+now measured wrong. Cooking is the cheaper half in every configuration here.
+
+Two consequences:
+
+- The server cannot skip this cost by not rendering. It still needs collision *geometry*,
+  and generating that geometry is the expensive part. A collision-only build could at least
+  skip normals and UVs, which the current builders compute per triangle.
+- Optimisation effort belongs in the mesher before the collider. The cell fan is 2.2× slower
+  per triangle than the vertex mesher, which fits — each cell does eight corner and edge
+  lookups, and each corner runs the widest-gap sort.
+
+Both numbers are **full-map rebuilds**, which no production design would do. With 4 m bricks
+and dirty-region rebuild the real figure is a small fraction of these. That is the "wrong
+shape" cost from the earlier scaling analysis, now with a number on it.
+
+### Projected onto a span brick
+
+Using the measured rates, and assuming an exposed-face mesher emits 4–8 triangles per column
+on open sloped ground (top cap plus one or two exposed sides; no bottom caps until tunnels):
+
+| Brick | Columns | Triangles | Build + cook |
+| --- | ---: | ---: | ---: |
+| 4 m at 0.25 m | 256 | 1,024 – 2,048 | 0.9 – 1.8 ms |
+| 4 m at 0.125 m | 1,024 | 4,096 – 8,192 | 3.5 – 7.0 ms |
+
+At W3's 32 strokes/s touching roughly two bricks each, that is ~60–120 ms/s at 0.25 m and
+~220–450 ms/s at 0.125 m, main-thread synchronous. Tight at the finer resolution, not fatal,
+and both halves have headroom — off-thread baking for the cook, and a span mesher that should
+be simpler than the eight-triangle fan for the build.
+
+**Collision is not the wall.** The triangles-per-column assumption is the weak link in this
+projection, and the appearance gate will replace it with a real count.
+
+---
+
+## Step 2 results — the appearance gate, 8 September 2026
+
+Built `Assets/Scripts/Span/` and the `SpanGate` scene: a span world filled from the same
+`DemoTerrain` height function the main prototype uses, so the comparison is between
+representations rather than between terrains. Exact and smoothed meshers, 1 m to 0.125 m
+columns, an axis-aligned mine, and interactive mining.
+
+### The verdict
+
+| | Result |
+| --- | --- |
+| Stepped **surface** | **Rejected.** Reads as blocky at every resolution tested |
+| Stepped **cave walls** | **Tolerable.** Enclosed lighting and rock read very differently from a stepped hillside |
+| Smoothed caps | Wanted. Floors *and* ceilings — a stepped roof over a smooth floor reads worse than either alone |
+| Column size | 0.5 m and finer look right; 0.125 m preferred |
+
+**This is the hybrid outcome and it keeps everything already built:** heightfield surface,
+spans only where tunnels exist.
+
+### Why ramps need fine columns
+
+A floor is flat within a column, so the step underfoot is slope × column size no matter how
+precise the vertical coordinate is. Millimetre spans do not help. Over the test corridor's
+3 m descent across 13 m of run:
+
+| Column | Step underfoot |
+| --- | ---: |
+| 1 m | 0.231 m |
+| 0.5 m | 0.115 m |
+| 0.25 m | 0.058 m |
+| 0.125 m | 0.029 m |
+
+### Per-edit cost, measured
+
+Smoothed caps, 4 m bricks, main-thread synchronous cooking, which is the worst case. Both
+readings are the 4-brick worst case, where an edit lands on a brick corner and the halo
+crosses a boundary in both axes.
+
+| Column | Bite | Build | Cook | Total |
+| --- | --- | ---: | ---: | ---: |
+| 1 m | 1 m | 0.28 ms | 0.27 ms | **0.55 ms** |
+| 0.125 m | 0.25 m | 9.78 ms | 3.45 ms | **13.23 ms** |
+
+Cost per brick scales as **columns per brick to the power 0.76** — sublinear, because much of
+a brick is interior with no faces to emit. Fitting the two measurements:
+
+| Column | Columns per brick | ms per brick | 4 bricks | Ramp step underfoot |
+| --- | ---: | ---: | ---: | ---: |
+| 1 m | 16 | 0.14 | 0.55 | 0.231 m |
+| 0.5 m | 64 | 0.40 | 1.59 | 0.115 m |
+| **0.25 m** | 256 | 1.15 | **4.58** | **0.058 m** |
+| 0.125 m | 1024 | 3.31 | 13.23 | 0.029 m |
+
+The middle two rows are interpolated, not measured.
+
+A 0.25 m bite spans 2 columns; with a one-column halo the window is 4 columns, so against a
+32-column brick the mix is 1 brick 76.6%, 2 bricks 21.9%, 4 bricks 1.6% — **1.27 bricks on
+average**. At W3's 32 strokes/s that gives 47 ms/s of main-thread terrain work at 0.25 m and
+16 ms/s at 0.5 m. Both are comfortably inside the acceptance spec's per-tick budget; 0.125 m
+is not.
+
+**0.25 m looks like the landing zone.** Its ramp step is 5.8 cm, which should be below the
+threshold of feel, and its worst-case edit is under 5 ms with no off-thread work at all. It
+also divides the 1 m interaction cell exactly 4 × 4.
+
+Moving the cook off-thread via `Physics.BakeMesh` remains available and would take roughly a
+quarter off; moving the mesh build off-thread too leaves only the install on the main thread.
+Neither is needed at 0.25 m on these numbers.
+
+### Rebuilding only what changed is most of the cost
+
+The first version rebuilt a blanket 3×3 of bricks per edit and cost **26 ms**. Testing whether
+a brick's columns or its one-column halo actually overlap the change brought the same edit to
+4.28 ms — a **6× improvement from doing no extra work**, before any optimisation.
+
+Bite size barely affects cost. The rebuild unit is the brick, and a 4 m brick holds 16 columns
+at 1 m and 1,024 at 0.125 m.
+
+### Two bugs worth remembering
+
+Smoothed caps tore open and you could see through the world. It took two passes, because
+there were two separate causes and fixing the first hid the second.
+
+**Asymmetric corners.** Two adjacent columns computed *different heights for the same shared
+corner*, because the rule was "average neighbours within the threshold of *my* height" and
+each column measured that window from itself. The four columns meeting at a corner are the
+same four whichever asks, so the answer must depend only on that set. Fixed by sorting the
+gathered heights, splitting at any gap wider than the threshold, and taking the mean of the
+group the caller falls in.
+
+**This is the same widest-gap clustering as `CellGrid.SharedCornerRaw`.** Two independent
+smoothing problems, same answer — worth reaching for first next time.
+
+**Only half the wall edges followed their caps.** A wall edge has to land exactly on whichever
+cap bounds it, and there are four ways that happens: this span's own open top, its own open
+bottom (a ceiling), and the same two against the neighbour's caps. The first pass handled the
+two top cases and neither bottom case — and ceiling smoothing was added in the same round,
+which tilted every tunnel roof away from the raw boundary the walls were still stopping at.
+So half the fix and half a new instance of the same fault shipped together.
+
+The lesson is the shape of the fault, not the arithmetic: **whenever geometry is derived
+per-element, every shared edge needs both sides asking the same question.** Both bugs, and the
+cut/fill accounting bugs before them, are that same failure.
+
+### Not attempted
+
+Wall smoothing. Moving a wall horizontally is dual-contouring territory, not a cap tilt, and
+the cubed walls were judged acceptable.
+
+---
+
 ## Corrections on record
 
 Recorded so they are not re-argued. All four are cases where a plausible inference was

@@ -35,6 +35,15 @@ namespace Terraform.Play
         void Awake()
         {
             _cc = GetComponent<CharacterController>();
+        }
+
+        /// <summary>
+        /// Yaw is read on enable rather than in Awake so that disabling and re-enabling the
+        /// controller around a teleport picks up the new facing. Read once at startup, a
+        /// teleported player keeps looking whichever way they were pointing before.
+        /// </summary>
+        void OnEnable()
+        {
             _yaw = transform.eulerAngles.y;
         }
 

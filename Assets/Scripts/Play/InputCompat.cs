@@ -89,6 +89,8 @@ namespace Terraform.Play
         public static bool PixelErrorDownPressed { get { return Down(Key.LeftBracket); } }
         public static bool SampleWindowPressed { get { return Down(Key.N); } }
         public static bool SkyPressed { get { return Down(Key.L); } }
+        public static bool SpanResolutionPressed { get { return Down(Key.C); } }
+        public static bool SmoothPressed { get { return Down(Key.V); } }
 
 #elif ENABLE_LEGACY_INPUT_MANAGER
 
@@ -144,6 +146,8 @@ namespace Terraform.Play
         public static bool PixelErrorDownPressed { get { return Input.GetKeyDown(KeyCode.LeftBracket); } }
         public static bool SampleWindowPressed { get { return Input.GetKeyDown(KeyCode.N); } }
         public static bool SkyPressed { get { return Input.GetKeyDown(KeyCode.L); } }
+        public static bool SpanResolutionPressed { get { return Input.GetKeyDown(KeyCode.C); } }
+        public static bool SmoothPressed { get { return Input.GetKeyDown(KeyCode.V); } }
 
 #else
 
@@ -180,6 +184,8 @@ namespace Terraform.Play
         public static bool PixelErrorDownPressed { get { return false; } }
         public static bool SampleWindowPressed { get { return false; } }
         public static bool SkyPressed { get { return false; } }
+        public static bool SpanResolutionPressed { get { return false; } }
+        public static bool SmoothPressed { get { return false; } }
 
 #endif
 

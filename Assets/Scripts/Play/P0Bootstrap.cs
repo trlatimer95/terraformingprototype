@@ -128,6 +128,10 @@ namespace Terraform.Play
         {
             if (FindAnyObjectByType<P0Bootstrap>() != null) return;
 
+            // The span gate is its own scene with its own bootstrap. Without this, both
+            // worlds would spawn on top of each other.
+            if (FindAnyObjectByType<SpanGateBootstrap>() != null) return;
+
             var go = new GameObject("P0 Bootstrap (auto)");
             go.AddComponent<P0Bootstrap>();
         }

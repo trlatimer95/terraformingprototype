@@ -30,6 +30,10 @@ namespace Terraform.Play
             if (IsOpen == open) return;
 
             IsOpen = open;
+
+            Cursor.lockState = open ? CursorLockMode.None : CursorLockMode.Locked;
+            Cursor.visible = open;
+
             if (Bootstrap != null) Bootstrap.SetPaused(open);
         }
 
