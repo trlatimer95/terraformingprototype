@@ -1,0 +1,42 @@
+# Unity generated
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Unity crash-recovery scenes. Junk left by the shader-stripper crashes; safe to delete.
+Assets/_Recovery/
+Assets/_Recovery.meta
+
+# IDE and build system
+*.csproj
+*.sln
+*.user
+*.pidb
+*.booproj
+*.svd
+*.unitypackage
+.vs/
+.idea/
+.consulo/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# NOTE: deliberately no blanket rule for hidden directories.
+#
+# Some terrain packages keep required data in dot-directories that Unity's own package
+# export leaves out -- Digger's `.internal` data under Assets/DiggerData is the documented
+# example. A rule like `.*/` would drop it silently, and the failure looks like "the cave
+# scene opened but the caves are gone" on a fresh clone.
+#
+# Verify vendor data survives by opening a clean checkout, not by assuming that the scene
+# file being present means its data is.

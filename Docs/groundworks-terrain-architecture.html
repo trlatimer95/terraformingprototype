@@ -1,0 +1,1207 @@
+<title>Groundworks Terrain Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+
+<style>
+  :root {
+    --paper:        #F0F1EE;
+    --paper-sunk:   #E6E8E4;
+    --paper-raised: #FAFAF8;
+    --ink:          #16191A;
+    --ink-soft:     #4A5456;
+    --ink-faint:    #788285;
+    --rule:         #D2D7D3;
+    --rule-strong:  #B4BCB7;
+    --accent:       #1F5A5E;
+    --accent-soft:  #E2ECEB;
+
+    /* Material colours. Content, not decoration: these are the strata. */
+    --m-soil:   #7C6A4C;
+    --m-grass:  #5F7145;
+    --m-clay:   #A5714A;
+    --m-rock:   #6B7276;
+    --m-iron:   #8E4A2E;
+    --m-void:   #2A2F31;
+
+    --shadow: 0 1px 2px rgba(20,25,26,.06), 0 6px 18px rgba(20,25,26,.05);
+
+    --measure: 68ch;
+    --gap: 1.15rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:        #101314;
+      --paper-sunk:   #0A0C0D;
+      --paper-raised: #191D1F;
+      --ink:          #E5E8E5;
+      --ink-soft:     #A3ADAE;
+      --ink-faint:    #788285;
+      --rule:         #2A3032;
+      --rule-strong:  #3C4446;
+      --accent:       #6FBDC1;
+      --accent-soft:  #17302F;
+
+      --m-soil:   #9A8562;
+      --m-grass:  #7C9159;
+      --m-clay:   #C08A5E;
+      --m-rock:   #868D91;
+      --m-iron:   #B4643F;
+      --m-void:   #050708;
+
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:        #101314;
+    --paper-sunk:   #0A0C0D;
+    --paper-raised: #191D1F;
+    --ink:          #E5E8E5;
+    --ink-soft:     #A3ADAE;
+    --ink-faint:    #788285;
+    --rule:         #2A3032;
+    --rule-strong:  #3C4446;
+    --accent:       #6FBDC1;
+    --accent-soft:  #17302F;
+
+    --m-soil:   #9A8562;
+    --m-grass:  #7C9159;
+    --m-clay:   #C08A5E;
+    --m-rock:   #868D91;
+    --m-iron:   #B4643F;
+    --m-void:   #050708;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 3.4rem 1.5rem 6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3.1rem;
+  }
+
+  /* ---------- masthead ---------- */
+
+  .masthead { display: flex; flex-direction: column; gap: .9rem; }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: .7rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  h1 {
+    font-family: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+    font-weight: 700;
+    font-size: clamp(2.1rem, 5.4vw, 3.05rem);
+    line-height: 1.06;
+    letter-spacing: -.014em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    font-size: 1.09rem;
+    color: var(--ink-soft);
+    max-width: var(--measure);
+    margin: 0;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem 1.5rem;
+    padding-top: .9rem;
+    border-top: 1px solid var(--rule);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .74rem;
+    color: var(--ink-faint);
+  }
+  .meta b { color: var(--ink-soft); font-weight: 500; }
+
+  /* ---------- sections ---------- */
+
+  section { display: flex; flex-direction: column; gap: var(--gap); }
+
+  .head {
+    display: flex;
+    align-items: baseline;
+    gap: .85rem;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: .45rem;
+  }
+
+  .num {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .82rem;
+    font-weight: 500;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  h2 {
+    font-family: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+    font-weight: 700;
+    font-size: 1.42rem;
+    letter-spacing: -.006em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-family: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+    font-weight: 600;
+    font-size: 1.06rem;
+    letter-spacing: .002em;
+    margin: .5rem 0 -.35rem;
+    text-wrap: balance;
+  }
+
+  p { margin: 0; max-width: var(--measure); }
+  section > ul, section > ol { max-width: var(--measure); }
+
+  ul, ol { margin: 0; padding-left: 1.15rem; display: flex; flex-direction: column; gap: .5rem; }
+  li { padding-left: .15rem; }
+  li::marker { color: var(--ink-faint); }
+
+  strong { font-weight: 600; }
+  em { font-style: italic; }
+
+  a { color: var(--accent); text-underline-offset: 2px; }
+  a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  code, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: .855em;
+  }
+  p code, li code, td code {
+    background: var(--paper-sunk);
+    padding: .08em .35em;
+    border-radius: 3px;
+  }
+
+  /* ---------- code block ---------- */
+
+  pre {
+    margin: 0;
+    background: var(--paper-sunk);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .8rem;
+    line-height: 1.66;
+    color: var(--ink);
+  }
+  pre .c { color: var(--ink-faint); }
+  pre .k { color: var(--accent); font-weight: 500; }
+
+  /* ---------- tables ---------- */
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--rule); background: var(--paper-raised); }
+
+  table { border-collapse: collapse; width: 100%; font-size: .875rem; }
+
+  th, td {
+    text-align: left;
+    padding: .62rem .85rem;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  th {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-weight: 600;
+    font-size: .74rem;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    background: var(--paper-sunk);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num-cell, th.num-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td .mono { color: var(--ink-soft); }
+
+  /* ---------- figure ---------- */
+
+  figure {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .7rem;
+  }
+  .figbody {
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    padding: 1.3rem 1.1rem 1rem;
+    overflow-x: auto;
+  }
+  .figbody svg { display: block; min-width: 640px; width: 100%; height: auto; }
+  figcaption {
+    font-size: .82rem;
+    color: var(--ink-soft);
+    max-width: var(--measure);
+  }
+  figcaption b { font-family: "IBM Plex Sans Condensed", sans-serif; color: var(--ink); font-weight: 600; }
+
+  svg text { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+  /* ---------- callout ---------- */
+
+  .note {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    padding: .85rem 1.05rem;
+    max-width: var(--measure);
+    display: flex;
+    flex-direction: column;
+    gap: .45rem;
+    font-size: .95rem;
+  }
+  .note .tag {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: .7rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .note p { max-width: none; }
+
+  /* ---------- decision list ---------- */
+
+  .decisions { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--rule); }
+  .decision {
+    display: grid;
+    grid-template-columns: 2.4rem 1fr;
+    gap: 0 .9rem;
+    padding: .95rem 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .decision .k {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .78rem;
+    color: var(--accent);
+    padding-top: .12rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .decision .body { display: flex; flex-direction: column; gap: .3rem; }
+  .decision h4 {
+    margin: 0;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  .decision p { font-size: .93rem; color: var(--ink-soft); }
+
+  /* ---------- stages ---------- */
+
+  .stages { display: flex; flex-direction: column; gap: 1.15rem; }
+  .stage {
+    display: grid;
+    grid-template-columns: 7.5rem 1fr;
+    gap: 0 1.2rem;
+    padding-left: 1.2rem;
+    border-left: 2px solid var(--rule-strong);
+  }
+  .stage .label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .76rem;
+    color: var(--accent);
+    padding-top: .2rem;
+  }
+  .stage .body { display: flex; flex-direction: column; gap: .35rem; }
+  .stage h4 {
+    margin: 0;
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: 1.04rem;
+    font-weight: 600;
+  }
+  .stage p { font-size: .93rem; }
+  .stage .proves {
+    font-size: .82rem;
+    color: var(--ink-soft);
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .stage .proves b { color: var(--ink); font-weight: 500; }
+
+  /* ---------- legend ---------- */
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem 1.1rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .74rem;
+    color: var(--ink-soft);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: .4rem; }
+  .legend i { width: 11px; height: 11px; display: inline-block; border: 1px solid rgba(0,0,0,.2); }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 1.1rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .74rem;
+    color: var(--ink-faint);
+    max-width: var(--measure);
+    line-height: 1.7;
+  }
+
+  @media (max-width: 620px) {
+    .wrap { padding: 2.2rem 1.1rem 4rem; gap: 2.4rem; }
+    .stage { grid-template-columns: 1fr; gap: .3rem; padding-left: 1rem; }
+    .decision { grid-template-columns: 1.9rem 1fr; }
+  }
+
+
+  /* ---------- print ---------- */
+
+  .actions { display: flex; gap: .6rem; padding-top: .3rem; }
+  .btn {
+    font-family: "IBM Plex Sans Condensed", sans-serif;
+    font-size: .78rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    color: var(--paper);
+    background: var(--accent);
+    border: none;
+    padding: .5rem .9rem;
+    cursor: pointer;
+    border-radius: 2px;
+  }
+  .btn:hover { opacity: .9; }
+  .btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  @media print {
+    /* Matched specificity against the dark blocks, so printing from a dark
+       browser still puts ink on white rather than a black slab. */
+    :root,
+    :root:not([data-theme="light"]),
+    :root[data-theme="dark"] {
+      --paper:        #FFFFFF;
+      --paper-sunk:   #F2F3F1;
+      --paper-raised: #FFFFFF;
+      --ink:          #16191A;
+      --ink-soft:     #454F51;
+      --ink-faint:    #6C7679;
+      --rule:         #C9CFCB;
+      --rule-strong:  #A6AEA9;
+      --accent:       #1B5054;
+      --accent-soft:  #EDF3F2;
+
+      --m-soil:   #7C6A4C;
+      --m-grass:  #5F7145;
+      --m-clay:   #A5714A;
+      --m-rock:   #6B7276;
+      --m-iron:   #8E4A2E;
+      --m-void:   #2A2F31;
+
+      --shadow: none;
+    }
+
+    @page { margin: 15mm 14mm; }
+
+    body { font-size: 10.4pt; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .wrap { max-width: none; padding: 0; gap: 1.9rem; }
+    .actions { display: none; }
+
+    h1 { font-size: 25pt; }
+    h2 { font-size: 14pt; }
+    h3 { font-size: 11.5pt; }
+
+    /* Keep the units of the argument whole across a page turn. */
+    figure, .note, .decision, .stage, .tablewrap, pre, li { break-inside: avoid; }
+    .head, h2, h3 { break-after: avoid; }
+    section { break-inside: auto; }
+
+    .figbody svg { min-width: 0; }
+    .figbody, .tablewrap { overflow: visible; }
+
+    a { text-decoration: none; }
+    footer { break-inside: avoid; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Groundworks · terrain systems · design proposal</div>
+    <h1>Terrain, Strata and Mining Architecture</h1>
+    <p class="standfirst">A single data model covering player terraforming, per-cell surface materials,
+    layered geology, ore distribution and tunnelling — with an implementation order chosen so that
+    later stages extend earlier ones instead of reworking them.</p>
+    <div class="meta">
+      <span><b>Prepared</b> 7 September 2026</span>
+      <span><b>Prototype</b> Tests/Terraform, Unity 6000.3.9f1</span>
+      <span><b>Target</b> 64+ player authoritative server</span>
+      <span><b>Status</b> proposal for evaluation</span>
+    </div>
+    <div class="actions">
+      <button class="btn" type="button" onclick="window.print()">Save as PDF</button>
+    </div>
+  </header>
+
+  <!-- ============================================================= -->
+  <section>
+    <div class="head"><span class="num">01</span><h2>What the system has to do</h2></div>
+
+    <p>Restating the requirement precisely, because most of the architecture follows from
+    one line of it.</p>
+
+    <ul>
+      <li><strong>Terraform.</strong> Raise, lower and flatten ground at cell resolution, with
+      results that hold their shape and read as natural.</li>
+      <li><strong>Surface material.</strong> Rock, sand, soil, forest soil, clay, slate and so on —
+      painted at world build, then changed by players at roughly cell granularity.</li>
+      <li><strong>Place and recover.</strong> Dropping material raises the ground and changes its
+      surface. Digging it back lowers the ground, returns the material to inventory, and
+      <em>exposes whatever was underneath</em>.</li>
+      <li><strong>Depth matters.</strong> Stack soil, clay, then rock and the surface reads rock;
+      dig down and clay appears, then soil. Lower layers are tracked, not just the top.</li>
+      <li><strong>Geology.</strong> Ore veins concentrated in mountains and ridges, rock throughout,
+      clay in its own areas — mixed within a single cell volume (20% iron, 80% rock).</li>
+      <li><strong>Mining.</strong> Native rock cannot be shovelled. Removing it is a mining action
+      that opens a void, and the void exposes the surrounding cells' interiors.</li>
+      <li><strong>Authored worlds.</strong> Initial worlds built with an external tool so several
+      maps can be offered, with the sub-surface implied rather than hand-placed.</li>
+    </ul>
+
+    <p>The line that decides the architecture is <em>"the material layers underneath would be
+    logical until exposed."</em> Taken seriously, it means the strata are not data at all.</p>
+  </section>
+
+  <!-- ============================================================= -->
+  <section>
+    <div class="head"><span class="num">02</span><h2>The central split: computed vs authored</h2></div>
+
+    <p>The instinct to run two tracking systems is right, but the productive seam is not
+    <em>surface versus deep</em>. It is <strong>what a function can produce</strong> versus
+    <strong>what only a player could have produced</strong>.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>&nbsp;</th><th>Geology</th><th>Edits</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Origin</strong></td>
+            <td>A pure function of cell and world seed</td>
+            <td>Player actions</td>
+          </tr>
+          <tr>
+            <td><strong>Extent</strong></td>
+            <td>Every cell, every depth, to bedrock</td>
+            <td>A sparse skin over touched cells only</td>
+          </tr>
+          <tr>
+            <td><strong>Mutation</strong></td>
+            <td>Never written. Only occluded by removals</td>
+            <td>Written constantly, added and removed</td>
+          </tr>
+          <tr>
+            <td><strong>Storage</strong></td>
+            <td><strong>Zero bytes.</strong> Evaluated on demand</td>
+            <td>Explicit spans, only where touched</td>
+          </tr>
+          <tr>
+            <td><strong>Replication</strong></td>
+            <td>Never sent. Identical on every client from the seed</td>
+            <td>Every change, as commands</td>
+          </tr>
+          <tr>
+            <td><strong>Persistence</strong></td>
+            <td>The seed and the map file</td>
+            <td>The save</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Three consequences are worth stating plainly, because they are the reason to prefer this
+    over a stored voxel or column world.</p>
+
+    <p><strong>An untouched world stores nothing per cell.</strong> A cell allocates the first time
+    somebody digs it. A busy village might touch ten thousand cells; that is on the order of a
+    hundred kilobytes for the whole settlement, against hundreds of megabytes to store the same
+    region as columns.</p>
+
+    <p><strong>"Was this placed by a player?" needs no flag.</strong> It is answered by which
+    structure the material lives in. The rule that native rock cannot be shovelled but mined rock
+    can be re-dug falls out of the split rather than being enforced by a per-run boolean that has
+    to be kept honest through every operation.</p>
+
+    <p><strong>Geology never goes on the wire.</strong> Clients derive it. What replicates is the
+    edit layer, which was going to replicate anyway.</p>
+
+    <div class="note">
+      <span class="tag">Cost of this choice</span>
+      <p>Geology must be <em>bit-identical</em> on server and every client, forever, across
+      platforms and engine versions. That rules out <code>Mathf.PerlinNoise</code> and every other
+      engine-provided noise, none of which guarantee stability across versions. The generator has to
+      be integer hash noise the project owns and can freeze. This is cheap to do on day one and
+      near-impossible to retrofit once worlds exist.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================= -->
+  <section>
+    <div class="head"><span class="num">03</span><h2>The column, in both layers</h2></div>
+
+    <figure>
+      <div class="figbody">
+        <svg viewBox="0 0 760 400" role="img" aria-label="A single cell column shown three ways: computed geology, stored player edits, and the resulting rendered column.">
+          <!-- depth axis -->
+          <g fill="var(--ink-faint)" font-size="11">
+            <text x="8" y="44">6.0 m</text>
+            <text x="8" y="119">5.0</text>
+            <text x="8" y="194">4.0</text>
+            <text x="8" y="269">3.0</text>
+            <text x="8" y="344">2.0</text>
+          </g>
+          <g stroke="var(--rule)" stroke-width="1">
+            <line x1="60" y1="40" x2="752" y2="40"/>
+            <line x1="60" y1="115" x2="752" y2="115"/>
+            <line x1="60" y1="190" x2="752" y2="190"/>
+            <line x1="60" y1="265" x2="752" y2="265"/>
+            <line x1="60" y1="340" x2="752" y2="340"/>
+          </g>
+
+          <!-- panel headings -->
+          <g font-size="11" font-weight="500" fill="var(--ink)">
+            <text x="88" y="22">GEOLOGY · computed</text>
+            <text x="316" y="22">EDITS · stored</text>
+            <text x="546" y="22">RENDERED</text>
+          </g>
+
+          <!-- ---------- GEOLOGY ---------- -->
+          <g>
+            <rect x="88" y="115" width="150" height="75" fill="var(--m-soil)" opacity=".92"/>
+            <rect x="88" y="190" width="150" height="75" fill="var(--m-rock)" opacity=".92"/>
+            <rect x="88" y="265" width="150" height="75" fill="var(--m-rock)" opacity=".92"/>
+            <!-- iron speckle band -->
+            <g fill="var(--m-iron)">
+              <rect x="88" y="272" width="150" height="5"/>
+              <rect x="96" y="292" width="46" height="5"/>
+              <rect x="170" y="300" width="58" height="5"/>
+              <rect x="112" y="318" width="88" height="5"/>
+            </g>
+            <!-- rock fraction inside the soil run -->
+            <g fill="var(--m-rock)" opacity=".75">
+              <rect x="88" y="175" width="150" height="15"/>
+            </g>
+            <rect x="88" y="115" width="150" height="225" fill="none" stroke="var(--rule-strong)"/>
+            <g font-size="10" fill="#FFFFFF">
+              <text x="96" y="140">80% soil</text>
+              <text x="96" y="187">20% rock</text>
+              <text x="96" y="215">rock 100%</text>
+              <text x="96" y="290">20% iron / 80% rock</text>
+            </g>
+            <text x="88" y="356" font-size="10" fill="var(--ink-faint)">surface 5.0 · never stored</text>
+          </g>
+
+          <!-- ---------- EDITS ---------- -->
+          <g>
+            <rect x="316" y="77" width="150" height="38" fill="var(--m-rock)" opacity=".92"/>
+            <rect x="316" y="77" width="150" height="38" fill="none" stroke="var(--rule-strong)"/>
+            <text x="324" y="101" font-size="10" fill="#FFFFFF">ADDED rock</text>
+            <g stroke="var(--rule-strong)" stroke-dasharray="3 3" fill="none">
+              <rect x="316" y="115" width="150" height="225"/>
+            </g>
+            <text x="324" y="140" font-size="10" fill="var(--ink-faint)">(no removals yet)</text>
+            <text x="316" y="356" font-size="10" fill="var(--ink-faint)">1 span · 5 bytes</text>
+          </g>
+
+          <!-- ---------- RENDERED ---------- -->
+          <g>
+            <rect x="546" y="77" width="150" height="38" fill="var(--m-rock)" opacity=".92"/>
+            <rect x="546" y="115" width="150" height="60" fill="var(--m-soil)" opacity=".92"/>
+            <rect x="546" y="175" width="150" height="15" fill="var(--m-rock)" opacity=".75"/>
+            <rect x="546" y="190" width="150" height="150" fill="var(--m-rock)" opacity=".92"/>
+            <g fill="var(--m-iron)">
+              <rect x="546" y="272" width="150" height="5"/>
+              <rect x="554" y="292" width="46" height="5"/>
+              <rect x="628" y="300" width="58" height="5"/>
+              <rect x="570" y="318" width="88" height="5"/>
+            </g>
+            <rect x="546" y="77" width="150" height="263" fill="none" stroke="var(--rule-strong)"/>
+
+            <!-- dig limit marker -->
+            <line x1="536" y1="175" x2="706" y2="175" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 3"/>
+            <text x="546" y="170" font-size="10" fill="var(--accent)">shovel floor 4.2 m</text>
+
+            <g font-size="10" fill="#FFFFFF">
+              <text x="554" y="101">rock (loose)</text>
+              <text x="554" y="140">soil</text>
+            </g>
+            <text x="546" y="356" font-size="10" fill="var(--ink-faint)">top 5.5 · mining below 4.2</text>
+          </g>
+        </svg>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--m-soil)"></i>soil</span>
+        <span><i style="background:var(--m-clay)"></i>clay</span>
+        <span><i style="background:var(--m-rock)"></i>rock</span>
+        <span><i style="background:var(--m-iron)"></i>iron</span>
+        <span><i style="background:var(--m-void)"></i>void</span>
+      </div>
+      <figcaption><b>The worked example.</b> Geology is a function evaluated on demand — the whole
+      left column costs nothing to store. The player's pile of mined rock is the only thing written
+      down. What renders is the two composed. Digging to 4.2 m adds a removal span; the geology is
+      never edited.</figcaption>
+    </figure>
+
+    <h3>Why the shovel floor sits at 4.2</h3>
+
+    <p>The run from 4.0 to 5.0 is 80% soil and 20% rock. Composition is read as
+    <strong>sorted by hardness</strong>: the soft fraction comes off first and the hard fraction is
+    left behind. Eighty per cent of a one-metre run is 0.8 m, so a shovel reaches 4.2 m and stops.
+    Below that the cell is rock and the action becomes mining.</p>
+
+    <p>This one rule does a surprising amount of work. It produces the "cannot dig through iron"
+    behaviour with no special case, it gives ore-bearing rock a natural resistance proportional to
+    its grade, and it means a mixed run yields <em>proportional</em> quantities of both materials
+    when it is finally mined out.</p>
+  </section>
+
+  <!-- ============================================================= -->
+  <section>
+    <div class="head"><span class="num">04</span><h2>Data structures</h2></div>
+
+    <p>All vertical quantities use the existing fixed-point unit — <code>1/20 m</code>, one
+    <code>ushort</code>, exact to a tenth of a metre. Heights, run boundaries and void extents share
+    it. Nothing anywhere holds a vertical float.</p>
+
+<pre><span class="c">// ---- geology: computed, never stored ----------------------------</span>
+
+<span class="k">struct</span> Composition {
+    byte   Primary;        <span class="c">// material id</span>
+    byte   Secondary;      <span class="c">// material id, or None</span>
+    byte   SecondaryPct;   <span class="c">// 0..100, hardness-sorted</span>
+}
+
+<span class="k">struct</span> StrataRun {
+    ushort TopRaw;         <span class="c">// 1/20 m, exclusive upper bound</span>
+    ushort BottomRaw;
+    Composition What;
+}
+
+<span class="c">// Deterministic. Same result on server and every client, forever.</span>
+StrataColumn(cx, cz) -&gt; StrataRun[]
+
+<span class="c">// ---- edits: stored, sparse --------------------------------------</span>
+
+<span class="k">enum</span> EditKind : byte { Removed, Added }
+
+<span class="k">struct</span> EditSpan {          <span class="c">// 5 bytes packed</span>
+    ushort TopRaw;
+    ushort BottomRaw;
+    byte   KindAndMaterial;  <span class="c">// 1 bit kind, 7 bits material</span>
+}
+
+<span class="k">class</span> CellEdits {
+    EditSpan[] Spans;      <span class="c">// ordered, top to bottom, non-overlapping</span>
+}
+
+<span class="c">// Untouched cells have NO entry. This is the whole point.</span>
+Dictionary&lt;int, CellEdits&gt; _edits;</pre>
+
+    <p>A single ordered span list per touched cell covers every case uniformly. A dug pad is one
+    <code>Removed</code> span at the top. A pile is one <code>Added</code> span. A tunnel is a
+    <code>Removed</code> span with geology above it. There is no separate cut depth, no separate
+    void list, and no third structure to keep in agreement with the other two.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Case</th><th class="num-cell">Spans</th><th class="num-cell">Bytes</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Untouched cell</td><td class="num-cell">0</td><td class="num-cell">0</td><td>No dictionary entry at all</td></tr>
+          <tr><td>Levelled build pad</td><td class="num-cell">1</td><td class="num-cell">5</td><td>One removal from the top</td></tr>
+          <tr><td>Pile of spoil</td><td class="num-cell">1</td><td class="num-cell">5</td><td>One addition; same material merges</td></tr>
+          <tr><td>Cut and filled</td><td class="num-cell">2</td><td class="num-cell">10</td><td>Removal, then addition above it</td></tr>
+          <tr><td>Tunnel under intact ground</td><td class="num-cell">1</td><td class="num-cell">5</td><td>Removal with geology above</td></tr>
+          <tr><td>Village of 10,000 touched cells</td><td class="num-cell">~20k</td><td class="num-cell">~100 KB</td><td>Whole settlement, all edits</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Resolving a cell</h3>
+
+    <p>Everything the renderer and the tools need comes from composing the two layers top-down.
+    The common case — a cell with no edits — never allocates and never touches the dictionary.</p>
+
+<pre><span class="c">// Surface height and the material that shows there.</span>
+Surface(cx, cz):
+    edits = _edits.TryGet(cx, cz)          <span class="c">// usually absent</span>
+    <span class="k">if</span> no edits:
+        run = StrataColumn(cx, cz)[0]
+        <span class="k">return</span> (run.TopRaw, run.What.Primary)
+
+    <span class="k">for</span> span <span class="k">in</span> edits.Spans:          <span class="c">// already top-down</span>
+        <span class="k">if</span> span.Kind == Added:
+            <span class="k">return</span> (span.TopRaw, span.Material)
+
+    <span class="c">// otherwise: geology, minus whatever has been removed from it</span>
+    <span class="k">return</span> FirstIntactPoint(StrataColumn(cx, cz), edits.Spans)</pre>
+
+    <div class="note">
+      <span class="tag">Why a column function, not a point function</span>
+      <p>The geology generator must return the <em>runs of a column</em>, not the composition at a
+      single point. A point sampler cannot answer "how far down can a shovel reach" without
+      integrating over depth, and that question is asked on every dig. Returning runs makes the
+      shovel floor a subtraction.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================= -->
+  <section>
+    <div class="head"><span class="num">05</span><h2>The geology generator</h2></div>
+
+    <p>Four layers, evaluated in order, all deterministic from the map file plus the cell
+    coordinate. Each is independently authorable, which is what keeps world building in the
+    external tool rather than in code.</p>
+
+    <ol>
+      <li><strong>Surface height</strong> — read from the map's heightmap. This is what the external
+      tool authors, and it is already what the current importer samples.</li>
+      <li><strong>Surface material</strong> — read from the map's material map, one byte per cell,
+      classified from the tool's painted layers at build time. Sand, rock, soil, forest soil, clay,
+      slate.</li>
+      <li><strong>Depth profile</strong> — topsoil thickness, then subsoil, then bedrock, with
+      thicknesses driven by the surface material and by slope. Steep ground gets thin soil because
+      it sheds; hollows get deep soil because they collect.</li>
+      <li><strong>Veins</strong> — hash noise thresholded against a mask built from terrain features.
+      Ore where the mask says ridge and elevation is high; clay where it says low and flat. The
+      "heatmap" is this mask, and it is computed rather than painted.</li>
+    </ol>
+
+    <p>Layers 1 and 2 come from the map file. Layers 3 and 4 are parameters plus a seed. A map is
+    therefore a heightmap, a byte-per-cell material map, and a small parameter block — nothing a
+    designer has to author by hand below the surface.</p>
+
+    <p><strong>The mask answers the mineral-distribution requirement directly.</strong> "Ore veins in
+    mountains and ridges" is a ridge measure taken from the heightmap — curvature, or elevation
+    percentile within a radius — multiplied by a depth term. It needs no separate authored data and
+    it stays consistent with the terrain automatically, including on maps built later.</p>
+  </section>
+
+  <!-- ============================================================= -->
+  <section>
+    <div class="head"><span class="num">06</span><h2>Operations</h2></div>
+
+    <p>Every action keeps the existing shape, with one stage added. <code>Validate</code> stays pure
+    and cheap because it runs on hover for the HUD as well as on commit.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Stage</th><th>Responsibility</th><th>Purity</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Validate</strong></td>
+            <td>May this happen at all? Bounds, reach, step guard, occupancy, tool tier against
+            material hardness</td>
+            <td>Pure, read-only, allocation-free</td>
+          </tr>
+          <tr>
+            <td><strong>Resolve</strong></td>
+            <td>What exactly happens? Which spans change, where sluffed material lands, what
+            quantities enter the inventory</td>
+            <td>Pure, deterministic, bounded iteration</td>
+          </tr>
+          <tr>
+            <td><strong>Apply</strong></td>
+            <td>Write the resolved spans, mark the dirty region</td>
+            <td>The only writer</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>Resolve is new and it is what makes sluffing work.</strong> Today a blocked edit is
+    refused. With a Resolve stage the edit succeeds and only its destination changes — material that
+    cannot rest slides to the lower neighbour, which is better feel and no dead clicks. Because
+    Resolve is pure and deterministic, the server runs it and the client can run the same code for
+    prediction and get the same answer.</p>
+
+    <p>Two properties Resolve must hold, both easy to guarantee now and expensive to add later:
+    a <strong>fixed traversal order</strong>, so an avalanche settles identically everywhere, and a
+    <strong>hard iteration cap</strong>, so one click cannot cascade unboundedly across a map.</p>
+
+    <h3>The three verbs</h3>
+
+    <ul>
+      <li><strong>Place</strong> — consume from inventory, add or extend an <code>Added</code> span.
+      Same material as the span below merges into it, which is what keeps span counts flat under
+      repeated piling.</li>
+      <li><strong>Dig</strong> — shovel work. Permitted through <code>Added</code> spans without
+      restriction, and into native ground only down to the shovel floor of the current run. Yields
+      the material removed.</li>
+      <li><strong>Mine</strong> — gated on tool tier against the run's hardest constituent. Removes
+      a bounded volume, yields proportional quantities of every constituent, and writes a
+      <code>Removed</code> span. When that span has intact geology above it, a void exists and the
+      cell is no longer a heightfield.</li>
+    </ul>
+  </section>
+
+  <!-- ============================================================= -->
+  <section>
+    <div class="head"><span class="num">07</span><h2>Voids, and where the model changes shape</h2></div>
+
+    <figure>
+      <div class="figbody">
+        <svg viewBox="0 0 760 260" role="img" aria-label="A tunnel shown as a removed span with intact geology above it, exposing neighbouring cell interiors as walls.">
+          <g stroke="var(--rule)" stroke-width="1">
+            <line x1="60" y1="30" x2="700" y2="30"/>
+            <line x1="60" y1="230" x2="700" y2="230"/>
+          </g>
+          <g fill="var(--ink-faint)" font-size="11">
+            <text x="8" y="34">8.0 m</text>
+            <text x="8" y="234">2.0</text>
+          </g>
+
+          <!-- hillside cells -->
+          <g>
+            <rect x="90" y="60" width="120" height="170" fill="var(--m-rock)" opacity=".9"/>
+            <rect x="210" y="50" width="120" height="180" fill="var(--m-rock)" opacity=".9"/>
+            <rect x="330" y="45" width="120" height="185" fill="var(--m-rock)" opacity=".9"/>
+            <rect x="450" y="55" width="120" height="175" fill="var(--m-rock)" opacity=".9"/>
+            <!-- topsoil cap -->
+            <rect x="90" y="60" width="480" height="16" fill="var(--m-grass)"/>
+            <!-- iron band -->
+            <g fill="var(--m-iron)" opacity=".95">
+              <rect x="90" y="150" width="120" height="9"/>
+              <rect x="210" y="146" width="120" height="9"/>
+              <rect x="330" y="142" width="120" height="9"/>
+              <rect x="450" y="150" width="120" height="9"/>
+            </g>
+            <!-- the void -->
+            <rect x="210" y="160" width="240" height="50" fill="var(--m-void)"/>
+            <rect x="210" y="160" width="240" height="50" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+            <text x="266" y="190" font-size="11" fill="#D8DEDF">REMOVED span</text>
+          </g>
+
+          <g font-size="10.5" fill="var(--ink-soft)">
+            <text x="596" y="70">intact geology above</text>
+            <text x="596" y="155">vein exposed on the</text>
+            <text x="596" y="170">wall — evaluated,</text>
+            <text x="596" y="185">not stored</text>
+            <text x="596" y="216">floor from the run below</text>
+          </g>
+          <g stroke="var(--ink-faint)" stroke-width="1" fill="none">
+            <path d="M592 66 L455 66"/>
+            <path d="M592 166 L455 172"/>
+            <path d="M592 212 L455 208"/>
+          </g>
+        </svg>
+      </div>
+      <figcaption><b>A tunnel is one removed span.</b> Its walls, floor and ceiling are not stored —
+      they are the geology function evaluated at the void's boundary, which is why breaking into a
+      neighbouring cell exposes that cell's interior for free. The <em>data</em> supports this from
+      day one; only the mesher has to catch up.</figcaption>
+    </figure>
+
+    <p>Up to voids, everything is still a heightfield with bookkeeping above and below one surface.
+    A void with intact material over it is genuinely 2.5D, and that is the single largest jump in
+    this plan — larger than composition, larger than the edit layer. It needs a mesher that emits
+    floors and ceilings, collision for both, and navigation that understands overhead cover.</p>
+
+    <div class="note">
+      <span class="tag">The decision that must not be deferred</span>
+      <p>Even before any of that is built, <strong>the surface API has to admit more than one
+      surface per cell</strong>. A signature like <code>GetHeight(cx, cz) -&gt; ushort</code> bakes
+      in the assumption that a cell has exactly one, and it will be called from the mesher, the
+      tools, the HUD, the controller and the pathfinder before voids ship. Shaping it as
+      <code>SurfacesAt(cx, cz)</code> — returning one entry today and several later — costs almost
+      nothing now and is the difference between adding tunnels and rewriting to accommodate them.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================= -->
+  <section>
+    <div class="head"><span class="num">08</span><h2>Rendering</h2></div>
+
+    <p>The current meshers already have the property that makes per-cell material free:
+    <strong>neither shares a vertex between cells</strong>. The cell mesher fans eight triangles
+    from a centre with twenty-four fresh vertices; the vertex mesher emits six independent
+    vertices per cell for flat normals. Both always append.</p>
+
+    <p>So every vertex belongs to exactly one cell. Write that cell's material index into UV2, put
+    the material textures in a <code>Texture2DArray</code>, and the shader samples the right slice —
+    crisp per-cell boundaries, no splatmap, no blending, no extra geometry.</p>
+
+    <ul>
+      <li><strong>Composition variants</strong> are bands of the secondary percentage. Rock with a
+      trace of iron, rock with visible iron, near-solid vein: three slices chosen by threshold,
+      which is exactly the set of textures already envisaged.</li>
+      <li><strong>A material change needs no geometry rebuild.</strong> Geometry has not moved, so
+      the UV2 buffer is rewritten and nothing else — no triangle rebuild and, critically, no
+      collider re-cook. Painting is an order of magnitude cheaper than terraforming.</li>
+      <li><strong>Void surfaces</strong> take their material from the geology evaluated at the wall,
+      through the same array and the same shader.</li>
+    </ul>
+
+    <div class="note">
+      <span class="tag">Build hazard</span>
+      <p>This is the point where a custom shader stops being avoidable, and custom shaders are how a
+      player build renders magenta. The mitigation already exists — <code>Assets/Editor/BuildPrep.cs</code>
+      forces shaders into Always Included Shaders before every build — but the new shader has to be
+      added to its list, and that is easy to forget until a tester reports a pink world.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================= -->
+  <section>
+    <div class="head"><span class="num">09</span><h2>Replication and persistence</h2></div>
+
+    <p>The split does most of the work here. Geology is derived from the seed on every machine and
+    never transmitted. What crosses the wire is what crossed it before: commands.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Path</th><th>Carries</th><th class="num-cell">Order of size</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Player edit, broadcast</td><td>Command: verb, cell, quantity, material</td><td class="num-cell">~12 B</td></tr>
+          <tr><td>Chunk stream on approach</td><td>Edit spans for that chunk only</td><td class="num-cell">0 – 20 KB</td></tr>
+          <tr><td>Untouched chunk</td><td>Nothing. The seed already describes it</td><td class="num-cell">0 B</td></tr>
+          <tr><td>Returning player, absent a month</td><td>Current edit spans for chunks they load</td><td class="num-cell">as above</td></tr>
+          <tr><td>Save file, whole world</td><td>Seed, map reference, all edit spans</td><td class="num-cell">grows with play, not with world size</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Two properties fall out that are hard to get any other way. <strong>World size is free</strong>
+    — a sixteen-square-kilometre map costs the same to store as a one-kilometre map until players
+    dig. And <strong>a returning player sees the world as it is</strong>, because the state they
+    receive is the current span set, not a replay of everything that happened while they were gone.</p>
+
+    <p>The server does no meshing, so none of the rendering cost in section 08 applies to it. Server
+    work per edit is a Validate, a Resolve over a bounded region, and a span write.</p>
+  </section>
+
+  <!-- ============================================================= -->
+  <section>
+    <div class="head"><span class="num">10</span><h2>What is load-bearing, and what is not</h2></div>
+
+    <p>The concern about phasing is well founded, but the risk is not evenly spread. Six decisions
+    contaminate everything downstream if they change. The rest can be added later without touching
+    what came before. Settling the six — on paper, now — is what makes phasing safe.</p>
+
+    <h3>Load-bearing — settle before writing much more code</h3>
+
+    <div class="decisions">
+      <div class="decision">
+        <span class="k">L1</span>
+        <div class="body">
+          <h4>Geology computed, not stored</h4>
+          <p>Determines storage, replication, save format, and whether a large persistent world is
+          affordable at all. Reversing it later means rewriting persistence and streaming.</p>
+        </div>
+      </div>
+      <div class="decision">
+        <span class="k">L2</span>
+        <div class="body">
+          <h4>One vertical quantum everywhere</h4>
+          <p>Heights, run boundaries and void extents all in 1/20 m integers. Mixed units produce
+          seams where a tunnel ceiling misses a cell surface, and the fix touches every file.</p>
+        </div>
+      </div>
+      <div class="decision">
+        <span class="k">L3</span>
+        <div class="body">
+          <h4>Surface APIs admit more than one surface</h4>
+          <p>The quiet one. <code>GetHeight</code> returning a single value will be called from a
+          dozen systems before tunnels exist, and every one becomes a rewrite. See section 07.</p>
+        </div>
+      </div>
+      <div class="decision">
+        <span class="k">L4</span>
+        <div class="body">
+          <h4>Validate / Resolve / Apply</h4>
+          <p>Sluffing, mining yields and inventory all need an outcome to be computed rather than
+          merely approved. Adding the stage later means revisiting every operation written without it.</p>
+        </div>
+      </div>
+      <div class="decision">
+        <span class="k">L5</span>
+        <div class="body">
+          <h4>Owned, frozen noise</h4>
+          <p>Integer hash noise the project controls. Engine noise is not stable across versions, and
+          a change to it silently rewrites the geology under every existing save.</p>
+        </div>
+      </div>
+      <div class="decision">
+        <span class="k">L6</span>
+        <div class="body">
+          <h4>Cell model or vertex model</h4>
+          <p>Everything above sits on it, and it is the one decision the existing playtest already
+          answers. Open the survey, close it, then build.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3>Deferrable — add later without rework</h3>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Feature</th><th>Why it is safe to defer</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Composition and ore grades</td><td>Widens the geology function's return type. No other system reads it structurally.</td></tr>
+          <tr><td>Material list and hardness values</td><td>Data. Adding slate later is a row in a table.</td></tr>
+          <tr><td>Texture variants and the shader</td><td>Presentation over an index the mesher already writes.</td></tr>
+          <tr><td>Sluffing</td><td>A Resolve-stage behaviour, provided L4 exists.</td></tr>
+          <tr><td>Occupancy blocking</td><td>A Validate-stage predicate. One more read.</td></tr>
+          <tr><td>Inventory</td><td>Consumes yields Resolve already computes.</td></tr>
+          <tr><td>Veins and the mineral mask</td><td>Parameters to the geology function.</td></tr>
+          <tr><td>Tunnel <em>rendering</em></td><td>The data model admits voids from day one; only the mesher lags, provided L3 exists.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <span class="tag">The recommendation</span>
+      <p>A full-scale prototype is not necessary, and building one would mostly re-litigate decisions
+      that a paper answer settles more cheaply. What is necessary is that the six load-bearing
+      decisions are made <em>before</em> stage two, and that the interfaces are shaped for the end
+      state even where the implementation is not. That is a smaller commitment than a full build and
+      it removes most of the rework risk that phasing would otherwise carry.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================= -->
+  <section>
+    <div class="head"><span class="num">11</span><h2>Implementation order</h2></div>
+
+    <p>Each stage is ordered so that it can be evaluated on its own, and so that a bad result
+    invalidates as little of the previous stage as possible.</p>
+
+    <div class="stages">
+      <div class="stage">
+        <span class="label">STAGE 0</span>
+        <div class="body">
+          <h4>Close the model survey</h4>
+          <p>Cell model or vertex model, decided by testers on the build that already exists.
+          It is the cheapest of all these decisions and every later stage sits on it.</p>
+          <p class="proves">Settles <b>L6</b> · nothing new is built</p>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="label">STAGE 1</span>
+        <div class="body">
+          <h4>Geology, read-only</h4>
+          <p>The column function, the map format, the import that classifies painted layers into
+          surface materials, and the texture array. No edits at all — walk a generated world whose
+          strata are computed and whose surface is correctly textured.</p>
+          <p class="proves">Proves <b>L1 L2 L5</b> and the authoring pipeline · risks the shader</p>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="label">STAGE 2</span>
+        <div class="body">
+          <h4>The edit layer</h4>
+          <p>Spans, place and dig, the shovel floor, inventory yields. Shaped against the multi-surface
+          API even though every cell still has exactly one surface.</p>
+          <p class="proves">Proves <b>L3 L4</b> and the two-layer split · first playable loop</p>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="label">STAGE 3</span>
+        <div class="body">
+          <h4>Authority and persistence</h4>
+          <p>Server-side Validate and Resolve, command replication, chunk streaming, save and reload.
+          Still single-surface, so the hard networking problem is isolated from the hard geometry one.</p>
+          <p class="proves">Proves the replication model at scale · deliberately before tunnels</p>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="label">STAGE 4</span>
+        <div class="body">
+          <h4>Voids and mining</h4>
+          <p>The 2.5D mesher, void collision, wall materials from geology, tool tiers. The largest
+          single jump, taken against a data model that has already supported it for three stages.</p>
+          <p class="proves">The real risk · isolated on purpose</p>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="label">STAGE 5</span>
+        <div class="body">
+          <h4>Behaviour</h4>
+          <p>Sluffing, occupancy blocking, angle of repose as a material property, ore grades and
+          variant textures. All additive, all landing in stages that already exist.</p>
+          <p class="proves">Nothing structural · tuning and feel</p>
+        </div>
+      </div>
+    </div>
+
+    <p>Stage 3 before stage 4 is the deliberate call. Both are hard; doing them together means a
+    desync and a meshing bug look the same from the outside. Networking a single-surface world is a
+    solved-shape problem, and tunnels then arrive as geometry over a replication layer that is
+    already trusted.</p>
+  </section>
+
+  <!-- ============================================================= -->
+  <section>
+    <div class="head"><span class="num">12</span><h2>Open questions</h2></div>
+
+    <ul>
+      <li><strong>Is there bedrock?</strong> An unremovable bottom run gives a natural dig limit and
+      keeps every height positive. Without one, "what is at the bottom" needs another answer.</li>
+      <li><strong>What happens when sluffed material lands on a different material?</strong> A new
+      span on top is the obvious rule, but a hillside taking repeated thin sluffs will grow span
+      counts. Merging same-material arrivals covers most of it.</li>
+      <li><strong>Does mined rock re-place as rock?</strong> If loose spans are single-material, a
+      mixed run mines into two inventory items and returns as two pure spans. That is simpler and
+      probably right, but it means you cannot put the hillside back exactly as it was.</li>
+      <li><strong>How thin can a span be?</strong> The quantum allows 0.05 m. Very thin spans are
+      individually cheap but pathological in aggregate; a minimum thickness with merge-on-place is
+      probably wanted.</li>
+      <li><strong>Do voids collapse?</strong> Unsupported ceilings are a whole system. Worth deciding
+      whether it is ever in scope, because "no" is a legitimate answer and it simplifies stage 4.</li>
+      <li><strong>Structures over voids.</strong> Occupancy is a per-cell idea today. A building over
+      a tunnel makes it a per-surface idea, which is another consumer of L3.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Groundworks terrain systems · proposal for evaluation, 7 September 2026.<br>
+    Written against the prototype at Tests/Terraform (Unity 6000.3.9f1, 64×64 cells at 1 m,
+    heights in 1/20 m fixed point). Sizes quoted are order-of-magnitude estimates from the
+    structures described here, not measurements.
+  </footer>
+
+</div>

@@ -1,0 +1,611 @@
+<title>Groundworks Playtest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Literata:opsz,wght@7..72,400;7..72,500&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+  :root {
+    --paper:      #F1F0EA;
+    --surface:    #FAF9F4;
+    --ink:        #22251E;
+    --ink-soft:   #5C5F53;
+    --ink-faint:  #8A8C80;
+    --rule:       #D5D3C7;
+    --rule-soft:  #E3E1D7;
+
+    --vertex:     #9A6408;
+    --vertex-bg:  #F4E9D2;
+    --cell:       #0B6E85;
+    --cell-bg:    #DDEDF1;
+
+    --measure: 68ch;
+    --step: clamp(1.1rem, 0.9rem + 0.6vw, 1.6rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #17190F;
+      --surface:    #20231A;
+      --ink:        #EDECE2;
+      --ink-soft:   #A2A497;
+      --ink-faint:  #74776A;
+      --rule:       #343728;
+      --rule-soft:  #2A2D21;
+
+      --vertex:     #E5A62A;
+      --vertex-bg:  #2E2612;
+      --cell:       #5CC6E0;
+      --cell-bg:    #13282E;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #17190F;
+    --surface:    #20231A;
+    --ink:        #EDECE2;
+    --ink-soft:   #A2A497;
+    --ink-faint:  #74776A;
+    --rule:       #343728;
+    --rule-soft:  #2A2D21;
+
+    --vertex:     #E5A62A;
+    --vertex-bg:  #2E2612;
+    --cell:       #5CC6E0;
+    --cell-bg:    #13282E;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Literata", Georgia, serif;
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 54rem;
+    margin: 0 auto;
+    padding: 3.5rem 1.5rem 6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3.25rem;
+  }
+
+  h1, h2, h3 {
+    font-family: "Archivo", system-ui, sans-serif;
+    text-wrap: balance;
+    margin: 0;
+    letter-spacing: -0.015em;
+  }
+
+  h1 { font-size: clamp(2.1rem, 1.5rem + 2.4vw, 3rem); font-weight: 700; line-height: 1.06; }
+  h2 { font-size: 1.45rem; font-weight: 600; line-height: 1.2; }
+  h3 { font-size: 1.02rem; font-weight: 600; letter-spacing: 0.005em; }
+
+  p { margin: 0; max-width: var(--measure); }
+
+  .eyebrow {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* ---- header ---- */
+
+  header { display: flex; flex-direction: column; gap: 1rem; }
+
+  .standfirst {
+    font-size: 1.12rem;
+    color: var(--ink-soft);
+    max-width: 46ch;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.6rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--rule);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.76rem;
+    color: var(--ink-faint);
+  }
+  .meta b { color: var(--ink-soft); font-weight: 500; }
+
+  /* ---- sections ---- */
+
+  section { display: flex; flex-direction: column; gap: 1.15rem; }
+  .section-head { display: flex; flex-direction: column; gap: 0.3rem; }
+
+  ol.steps {
+    margin: 0;
+    padding-left: 1.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    max-width: var(--measure);
+  }
+  ol.steps li::marker { font-family: "JetBrains Mono", monospace; color: var(--ink-faint); font-size: 0.85em; }
+
+  /* ---- model panels ---- */
+
+  .models { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); }
+
+  .model {
+    border: 1px solid var(--rule);
+    background: var(--surface);
+    padding: 1.25rem 1.35rem 1.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+  .model p { font-size: 0.95rem; }
+
+  .tag {
+    align-self: flex-start;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 0.2rem 0.5rem;
+  }
+  .model--cell .tag   { color: var(--cell);   background: var(--cell-bg); }
+  .model--vertex .tag { color: var(--vertex); background: var(--vertex-bg); }
+  .model--cell h3     { color: var(--cell); }
+  .model--vertex h3   { color: var(--vertex); }
+
+  /* ---- key tables ---- */
+
+  .keys { border-top: 1px solid var(--rule); }
+
+  .keyrow {
+    display: grid;
+    grid-template-columns: 11rem 1fr;
+    gap: 0.6rem 1.1rem;
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+    align-items: baseline;
+  }
+  .keyrow > div:last-child { font-size: 0.95rem; color: var(--ink-soft); }
+  .keyrow em { font-style: normal; color: var(--ink); }
+
+  kbd {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.78rem;
+    font-weight: 500;
+    border: 1px solid var(--rule);
+    border-bottom-width: 2px;
+    background: var(--surface);
+    color: var(--ink);
+    padding: 0.1rem 0.4rem;
+    white-space: nowrap;
+  }
+  .plus { color: var(--ink-faint); font-size: 0.8rem; padding: 0 0.1rem; }
+
+  .scope {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.9rem 0 0.35rem;
+    color: var(--ink-faint);
+  }
+  .scope--cell   { color: var(--cell); }
+  .scope--vertex { color: var(--vertex); }
+
+  /* ---- tests ---- */
+
+  .test {
+    display: grid;
+    grid-template-columns: 3.25rem 1fr;
+    gap: 0 1.1rem;
+    padding: 1.4rem 0;
+    border-top: 1px solid var(--rule);
+  }
+  .test-num {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--ink-faint);
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .test-body { display: flex; flex-direction: column; gap: 0.75rem; }
+  .test-body ul { margin: 0; padding-left: 1.15rem; display: flex; flex-direction: column; gap: 0.3rem; max-width: var(--measure); }
+  .test-body ul li { font-size: 0.96rem; }
+
+  .watch {
+    border-left: 2px solid var(--rule);
+    padding-left: 0.9rem;
+    font-size: 0.95rem;
+    color: var(--ink-soft);
+    max-width: var(--measure);
+  }
+  .watch b { color: var(--ink); font-weight: 500; }
+
+  /* ---- questions ---- */
+
+  ol.qs {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: q;
+    display: flex;
+    flex-direction: column;
+  }
+  ol.qs li {
+    counter-increment: q;
+    display: grid;
+    grid-template-columns: 2.2rem 1fr;
+    gap: 0.9rem;
+    padding: 0.7rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+    max-width: var(--measure);
+  }
+  ol.qs li::before {
+    content: "Q" counter(q);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--ink-faint);
+    padding-top: 0.28rem;
+  }
+
+  .note {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 1rem 1.15rem;
+    font-size: 0.94rem;
+    color: var(--ink-soft);
+    max-width: var(--measure);
+    /* Block, not flex. These notes hold a sentence with inline <kbd> and <b> in
+       it; as a flex column every one of those became its own full-width row and
+       broke the sentence into fragments. */
+    display: block;
+    line-height: 1.6;
+  }
+  .note b { color: var(--ink); font-weight: 500; }
+
+  code {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.86em;
+    color: var(--ink);
+  }
+
+  a { color: var(--ink); text-decoration-color: var(--ink-faint); text-underline-offset: 2px; }
+  a:focus-visible, kbd:focus-visible { outline: 2px solid var(--vertex); outline-offset: 2px; }
+
+  /* ---- action ---- */
+
+  .actions { display: flex; gap: 0.6rem; padding-top: 0.25rem; }
+
+  .btn {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-bottom-width: 2px;
+    padding: 0.5rem 0.9rem;
+    cursor: pointer;
+  }
+  .btn:hover { border-color: var(--ink-faint); }
+  .btn:focus-visible { outline: 2px solid var(--vertex); outline-offset: 2px; }
+
+  /* ---- print / PDF ---- */
+
+  @media print {
+    /* Matched specificity against the dark-scheme block above, so a tester printing
+       from a dark browser still gets ink on white paper. */
+    :root,
+    :root:not([data-theme="light"]),
+    :root[data-theme="dark"] {
+      --paper:      #FFFFFF;
+      --surface:    #FFFFFF;
+      --ink:        #191B14;
+      --ink-soft:   #4A4C42;
+      --ink-faint:  #6E7064;
+      --rule:       #BFBDB1;
+      --rule-soft:  #DAD8CE;
+      --vertex:     #855707;
+      --vertex-bg:  #F4E9D2;
+      --cell:       #0A5F74;
+      --cell-bg:    #DDEDF1;
+    }
+
+    @page { margin: 15mm 14mm; }
+
+    body {
+      font-size: 10.5pt;
+      line-height: 1.5;
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+
+    .wrap { max-width: none; padding: 0; gap: 1.9rem; }
+    .actions { display: none; }
+
+    h1 { font-size: 26pt; }
+    h2 { font-size: 14pt; }
+    h3 { font-size: 11pt; }
+
+    /* Keep a unit of meaning on one page. */
+    .test, .model, .note, .keyrow, ol.qs li, ol.steps li { break-inside: avoid; }
+    .section-head, h2, h3, .scope { break-after: avoid; }
+    section { break-inside: auto; }
+    .models { gap: 0.7rem; }
+  }
+
+  @media (max-width: 34rem) {
+    .keyrow { grid-template-columns: 1fr; gap: 0.2rem; }
+    .test { grid-template-columns: 1fr; gap: 0.5rem; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">Medieval survival prototype · terrain spike</div>
+    <h1>Groundworks Playtest</h1>
+    <p class="standfirst">Two different ways of shaping ground are built into the same demo. We want to know which one you'd rather live with when you're clearing a site to put a building on.</p>
+    <div class="meta">
+      <span><b>Swap models</b> M</span>
+      <span><b>Step</b> 0.1 m per click</span>
+      <span><b>Max step</b> 3 m against a neighbour</span>
+      <span><b>Time needed</b> ~15 min</span>
+      <span><b>Build</b> Windows standalone</span>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn" id="save-pdf">Save as PDF</button>
+    </div>
+  </header>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Start here</div>
+      <h2>Getting in</h2>
+    </div>
+    <ol class="steps">
+      <li>Unzip the whole folder somewhere and run <code>Terraform.exe</code>. Keep the <code>Terraform_Data</code> folder next to it — the build won't start without it.</li>
+      <li>Windows SmartScreen will warn you about an unsigned app. <b>More info → Run anyway.</b></li>
+      <li>You spawn in a flat clearing in the middle of a 64 × 64 m map, one metre per cell. Numbers float on the ground showing heights in metres — on cell middles in the cell model, on the grid corners in the vertex model, because that is where each one keeps its heights.</li>
+      <li>You start in the <b>cell</b> model. Press <kbd>M</kbd> at any time to swap to the <b>vertex</b> model and back.</li>
+      <li><kbd>Esc</kbd> opens a menu with <b>Resume</b> and <b>Quit</b>.</li>
+    </ol>
+    <p class="note"><b>Each model keeps its own ground.</b> Swapping doesn't reset anything — build something one way, press <kbd>M</kbd>, build it the other way, then flip between them to compare. <kbd>R</kbd> resets only the model you're currently in.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Where to try things</div>
+      <h2>The map</h2>
+    </div>
+    <p>Four bits of ground around the clearing, so you can get straight to a slope instead of spending ten minutes building one. Both models generate the <em>same</em> terrain, so anything you compare is the model and not the ground.</p>
+    <div class="models">
+      <div class="model">
+        <span class="tag" style="color: var(--ink-soft); background: var(--rule-soft);">Middle</span>
+        <h3>Clearing</h3>
+        <p>Flat, about 20 m across. The empty sandbox — start here, and come back for any test that wants level ground.</p>
+      </div>
+      <div class="model">
+        <span class="tag" style="color: var(--ink-soft); background: var(--rule-soft);">North-west</span>
+        <h3>One hill</h3>
+        <p>A single clean dome, roughly 5 m tall. The simplest thing to cut a pad into.</p>
+      </div>
+      <div class="model">
+        <span class="tag" style="color: var(--ink-soft); background: var(--rule-soft);">North-east</span>
+        <h3>Rolling ground</h3>
+        <p>Low and broken, no obvious right answer about where a building goes. The awkward case.</p>
+      </div>
+      <div class="model">
+        <span class="tag" style="color: var(--ink-soft); background: var(--rule-soft);">South-east</span>
+        <h3>Small mountain</h3>
+        <p>About 11 m and steep. Still shallow enough per cell that every tool works on it.</p>
+      </div>
+      <div class="model">
+        <span class="tag" style="color: var(--ink-soft); background: var(--rule-soft);">South-west</span>
+        <h3>Shallow basin</h3>
+        <p>A dip a couple of metres deep, for testing lowering and backfilling rather than piling.</p>
+      </div>
+    </div>
+    <p class="note"><kbd>R</kbd> puts the whole map back the way it started, in whichever model you're in. It won't touch the other one.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">What you're comparing</div>
+      <h2>The two models</h2>
+    </div>
+    <div class="models">
+      <div class="model model--cell">
+        <span class="tag">Model A</span>
+        <h3>Cell</h3>
+        <p>Every cell has one height, at its middle. You raise a whole cell at a time, and the ground between cells works itself out.</p>
+        <p>Flattening pins that cell level. Level a second pad beside it at a different height and the first gives up its edge, so the two meet in a <em>slope</em> rather than a step.</p>
+      </div>
+      <div class="model model--vertex">
+        <span class="tag">Model B</span>
+        <h3>Vertex</h3>
+        <p>Heights live at the <em>corners</em>, and that is where the numbers sit. You raise one corner at a time, so a cell tips rather than rises — or raise all four together.</p>
+        <p>Flattening levels the cell between four corners to their <em>average</em> — cutting the high side and filling the low side. Corners are shared, so neighbouring cells move with them.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Reference</div>
+      <h2>Controls</h2>
+    </div>
+
+    <div class="keys">
+      <div class="scope">Both models</div>
+
+      <div class="keyrow">
+        <div><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> <span class="plus">·</span> <kbd>Shift</kbd></div>
+        <div>Walk, sprint. Mouse looks, <kbd>Space</kbd> jumps.</div>
+      </div>
+      <div class="keyrow">
+        <div><kbd>M</kbd></div>
+        <div><em>Swap between the cell and vertex models.</em></div>
+      </div>
+      <div class="keyrow">
+        <div>Scroll wheel</div>
+        <div>Step size per click — 5 cm, <em>10 cm</em>, 25 cm, 50 cm, 1 m.</div>
+      </div>
+      <div class="keyrow">
+        <div><kbd>Tab</kbd></div>
+        <div>Show or hide the grid lines.</div>
+      </div>
+      <div class="keyrow">
+        <div><kbd>L</kbd></div>
+        <div>Change the light — <em>midday</em>, low sun, overcast. Worth doing before you decide an edge looks wrong.</div>
+      </div>
+      <div class="keyrow">
+        <div><kbd>Z</kbd> <span class="plus">/</span> <kbd>Y</kbd></div>
+        <div>Undo, redo.</div>
+      </div>
+      <div class="keyrow">
+        <div><kbd>R</kbd></div>
+        <div>Reset the model you're in back to flat.</div>
+      </div>
+      <div class="keyrow">
+        <div><kbd>Esc</kbd></div>
+        <div>Open the pause menu — <em>Resume</em> or <em>Quit</em>. Frees the mouse while it is up.</div>
+      </div>
+
+      <div class="scope scope--cell">Model A — cell</div>
+
+      <div class="keyrow">
+        <div><kbd>1</kbd></div>
+        <div><em>Sculpt.</em> <kbd>LMB</kbd> raises the cell you're looking at, <kbd>RMB</kbd> lowers it. Hold to repeat.</div>
+      </div>
+      <div class="keyrow">
+        <div><kbd>2</kbd></div>
+        <div><em>Flatten.</em> <kbd>LMB</kbd> levels the cell, and softens any pad touching it — corners included — that was levelled to a different height. It always uses the cell's own current height.</div>
+      </div>
+      <div class="keyrow">
+        <div><kbd>−</kbd> <span class="plus">/</span> <kbd>=</kbd></div>
+        <div>How far a cell may stand above its neighbour before it refuses — 1, 2, <em>3</em>, 4 m, or off.</div>
+      </div>
+
+      <div class="scope scope--vertex">Model B — vertex</div>
+
+      <div class="keyrow">
+        <div><kbd>1</kbd></div>
+        <div><em>Sculpt a corner.</em> <kbd>LMB</kbd> raises the marked corner, <kbd>RMB</kbd> lowers it. The dot shows which one.</div>
+      </div>
+      <div class="keyrow">
+        <div><kbd>4</kbd></div>
+        <div><em>Raise a cell.</em> Moves all four corners together, so the cell rises flat instead of tipping.</div>
+      </div>
+      <div class="keyrow">
+        <div><kbd>2</kbd></div>
+        <div><em>Flatten.</em> Levels the outlined cell to the average of its four corners, read fresh each time.</div>
+      </div>
+      <div class="keyrow">
+        <div><kbd>3</kbd></div>
+        <div><em>Ramp.</em> <kbd>LMB</kbd> at the bottom, <kbd>LMB</kbd> at the top, and it grades a slope between. <kbd>RMB</kbd> cancels; <kbd>−</kbd><kbd>=</kbd> sets its width.</div>
+      </div>
+      <div class="keyrow">
+        <div><kbd>−</kbd> <span class="plus">/</span> <kbd>=</kbd></div>
+        <div>Max step, as above — 0.5, 1, 1.5, 2, <em>3</em> m, or off.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Do these in order · both models each time</div>
+      <h2>Three tests</h2>
+    </div>
+
+    <div class="test">
+      <div class="test-num">01</div>
+      <div class="test-body">
+        <h3>A hut pad on flat ground</h3>
+        <ul>
+          <li>In the middle clearing, level a patch about three cells square to a single height.</li>
+          <li>Do it in the cell model, then press <kbd>M</kbd> and do it again in the vertex model.</li>
+          <li>Level several neighbouring cells and watch what happens where two pads at different heights meet.</li>
+        </ul>
+        <p class="watch"><b>Watch for:</b> how many clicks it took, whether the pad came out genuinely flat, and whether you could tell what a click would do <em>before</em> you made it.</p>
+      </div>
+    </div>
+
+    <div class="test">
+      <div class="test-num">02</div>
+      <div class="test-body">
+        <h3>A pad cut into a slope</h3>
+        <ul>
+          <li>Walk out to the <b>hill</b> in the north-west and level a three-cell pad into its side — cutting into the high end, filling at the low end.</li>
+          <li>Then try the same on the <b>rolling ground</b> in the north-east, where there's no obvious flat spot to start from.</li>
+          <li>Same again in the other model.</li>
+        </ul>
+        <p class="watch"><b>Watch for:</b> what happened to the ground <em>around</em> the pad. Did it stay where you left it, or move on its own? Would you be happy putting a wall along that cut edge?</p>
+      </div>
+    </div>
+
+    <div class="test">
+      <div class="test-num">03</div>
+      <div class="test-body">
+        <h3>Two levels, one metre apart</h3>
+        <ul>
+          <li>On the hill, level a pad, then level the pad right next to it a metre lower.</li>
+          <li>Stand at the join and look along it. Then walk down onto the lower one.</li>
+          <li>In the vertex model, try <kbd>3</kbd> to ramp between the two levels.</li>
+        </ul>
+        <p class="watch"><b>Watch for:</b> in the cell model the two pads meet in a <em>slope</em>, not a step — the older pad gives up its edge rather than leave a stretched vertical face. Does that read better than a hard step would? And does it cost you flat ground you wanted to build on?</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Tell us</div>
+      <h2>Feedback</h2>
+    </div>
+    <p>Answer for building prep specifically — clearing a site to put something on it — not for terrain sculpting in general.</p>
+    <ol class="qs">
+      <li>Which model got you a flat, buildable pad faster? Did faster actually feel better?</li>
+      <li>Which was more <em>predictable</em> — where the ground did what you expected before you clicked?</li>
+      <li>Which gave you edges you'd want to place a building against?</li>
+      <li>In which did the ground you <em>hadn't</em> touched still look like natural terrain?</li>
+      <li>This is a survival game, so groundwork is meant to cost something. Did the effort feel like meaningful work, or like busywork?</li>
+      <li>Anything that surprised you, frustrated you, or looked broken?</li>
+    </ol>
+    <p class="note"><b>Please include the cut / fill figure</b> from the panel when you report a test — it's the cubic metres of earth you moved, and it tells us what a pad actually costs in each model.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Ignore these</div>
+      <h2>Known gaps</h2>
+    </div>
+    <ul class="steps" style="list-style: disc;">
+      <li>There are no textures or props. Judge the <em>shape</em> of the ground, not the surface — but do press <kbd>L</kbd>. Relief is read from shading, and a high midday sun flattens the small steps this test is about, while a low sun makes them obvious.</li>
+      <li>The cell model has no ramp tool yet — that's why test 03 only ramps in the vertex model.</li>
+      <li>In the vertex model, <kbd>T</kbd>, <kbd>H</kbd> and <kbd>[</kbd> <kbd>]</kbd> drive a separate experiment about Unity's built-in terrain. Leave them alone unless you're curious.</li>
+      <li>One chunk, no streaming, and the whole map rebuilds on every click. Expect a stutter while you hold a button down — <kbd>Tab</kbd> hides the grid lines and takes a good chunk of that back. Performance here says nothing about the real game.</li>
+      <li>The mountain is there to look at and cut into, not to be levelled flat. That would take a while.</li>
+    </ul>
+  </section>
+
+</div>
+
+<script>
+  document.getElementById("save-pdf").addEventListener("click", function () {
+    window.print();
+  });
+</script>
