@@ -13,7 +13,7 @@ namespace Terraform.Play
     /// each model keeps whatever you sculpted in it, so you can flip back and forth
     /// comparing the same piece of ground shaped two different ways.
     /// </summary>
-    public sealed class P0Bootstrap : MonoBehaviour
+    public sealed class P0Bootstrap : MonoBehaviour, IWorldBootstrap
     {
         public enum GroundSource { DemoMap, SceneTerrain }
 
@@ -123,14 +123,25 @@ namespace Terraform.Play
         SkyController _sky;
         Light _sun;
 
+        /// <summary>
+        /// Put a world in any scene that has none, so the plain demo needs no scene setup.
+        ///
+        /// Anything implementing IWorldBootstrap stands this down. That used to be a list of
+        /// named types and it went stale the moment a third bootstrap was written -- the span
+        /// gate was on it, the hybrid was not, so the hybrid scene quietly grew a second
+        /// world whose surface mesh hid every tunnel dug in the first.
+        ///
+        /// This runs AFTER the scene's own Awake calls, which is why a scene bootstrap cannot
+        /// defend itself by looking for this one: at that point it does not exist yet.
+        /// </summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void AutoSpawn()
         {
-            if (FindAnyObjectByType<P0Bootstrap>() != null) return;
-
-            // The span gate is its own scene with its own bootstrap. Without this, both
-            // worlds would spawn on top of each other.
-            if (FindAnyObjectByType<SpanGateBootstrap>() != null) return;
+            foreach (MonoBehaviour behaviour in
+                     FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (behaviour is IWorldBootstrap) return;
+            }
 
             var go = new GameObject("P0 Bootstrap (auto)");
             go.AddComponent<P0Bootstrap>();

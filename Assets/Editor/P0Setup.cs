@@ -8,7 +8,8 @@ namespace Terraform.EditorTools
 {
     /// <summary>
     /// Optional convenience: creates and saves a P0 scene. Not required -- P0Bootstrap
-    /// auto-spawns in any scene on play -- but useful once you want a scene to keep.
+    /// auto-spawns in any scene that holds no IWorldBootstrap -- but useful once you want a
+    /// scene to keep.
     /// </summary>
     public static class P0Setup
     {

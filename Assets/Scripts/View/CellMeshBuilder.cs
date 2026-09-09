@@ -19,12 +19,24 @@ namespace Terraform.View
     /// </summary>
     public static class CellMeshBuilder
     {
+        /// <summary>
+        /// Cells handed over to another representation. Null in the plain demo, set in a
+        /// hybrid world for cells sitting over a tunnel.
+        ///
+        /// A ceded cell drops BOTH its fan and its seam faces. The seam face rule is "only
+        /// the higher side emits", and if the higher side has been ceded then whatever owns
+        /// it emits that wall instead -- so leaving the calls in would draw it twice and
+        /// z-fight along every ledge at the boundary.
+        /// </summary>
+        public static System.Func<int, int, bool> Ceded;
+
         static readonly List<Vector3> Verts = new List<Vector3>();
         static readonly List<Vector3> Normals = new List<Vector3>();
         static readonly List<Vector2> Uvs = new List<Vector2>();
         static readonly List<int> Tris = new List<int>();
 
         static readonly Vector3[] Ring = new Vector3[8];
+        static readonly Vector3[] RingNormal = new Vector3[8];
 
         public static void Build(CellGrid g, Mesh mesh)
         {
@@ -37,11 +49,25 @@ namespace Terraform.View
             {
                 for (int cx = 0; cx < g.CellsX; cx++)
                 {
+                    if (Ceded != null && Ceded(cx, cz)) continue;
+
                     Vector3 centre = Local(g, cx + 0.5f, g.GetMetres(cx, cz), cz + 0.5f);
                     FillRing(g, cx, cz);
 
+                    Vector3 nc = CellSurface.NormalForCell(g, cx, cz, -1);
+                    for (int i = 0; i < 8; i++) RingNormal[i] = CellSurface.NormalForCell(g, cx, cz, i);
+
+                    // Smooth-shaded, and the reason is worth keeping: a flat normal per
+                    // triangle made the terrain read as blocky no matter how fine the mesh
+                    // got, because every facet became a step in the lighting and the fan
+                    // showed up as a diamond across every hill. The vertex normals come from
+                    // CellSurface so the span mesher can read the same ones -- shading the
+                    // seam differently would give back the whole point of matching it.
                     for (int i = 0; i < 8; i++)
-                        AddTriangle(centre, Ring[(i + 1) & 7], Ring[i]);
+                    {
+                        int j = (i + 1) & 7;
+                        AddSmoothTriangle(centre, Ring[j], Ring[i], nc, RingNormal[j], RingNormal[i]);
+                    }
 
                     AddFace(g, cx, cz, cx + 1, cz, Vector3.right);
                     AddFace(g, cx, cz, cx, cz + 1, Vector3.forward);
@@ -141,6 +167,25 @@ namespace Terraform.View
         static Vector3 Local(CellGrid g, float gx, float metres, float gz)
         {
             return new Vector3(gx * g.CellSize, metres, gz * g.CellSize);
+        }
+
+        /// <summary>
+        /// A fan triangle, each corner carrying the surface normal rather than the face one.
+        /// Seam faces keep AddTriangle: a wall between two cells at different heights is a
+        /// genuine hard edge and must not be smoothed into the ground it stands on.
+        /// </summary>
+        static void AddSmoothTriangle(Vector3 p0, Vector3 p1, Vector3 p2,
+                                      Vector3 n0, Vector3 n1, Vector3 n2)
+        {
+            int i = Verts.Count;
+            Verts.Add(p0); Verts.Add(p1); Verts.Add(p2);
+            Normals.Add(n0); Normals.Add(n1); Normals.Add(n2);
+
+            Uvs.Add(new Vector2(p0.x, p0.z));
+            Uvs.Add(new Vector2(p1.x, p1.z));
+            Uvs.Add(new Vector2(p2.x, p2.z));
+
+            Tris.Add(i); Tris.Add(i + 1); Tris.Add(i + 2);
         }
 
         static void AddTriangle(Vector3 p0, Vector3 p1, Vector3 p2)

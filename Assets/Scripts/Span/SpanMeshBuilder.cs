@@ -19,9 +19,55 @@ namespace Terraform.Span
     /// the accounted spans. That is a bounded, documented tolerance rather than a redesign,
     /// but it is a real cost and the reason both modes exist.
     /// </summary>
+    /// <summary>
+    /// Where the span world's top meets a surface owned by something else.
+    ///
+    /// A span column in a hybrid world is not free to choose its own top. Its top IS the
+    /// surface, and the surface is drawn by another mesher a few centimetres away. If the
+    /// two disagree by a millimetre you get a crack; if they disagree by a smoothing rule
+    /// you get a blocky scar across a smooth hillside. So the span mesher asks the surface
+    /// rather than deciding.
+    /// </summary>
+    public interface ISurfaceCaps
+    {
+        /// <summary>Where this column's solid ends at the surface, or int.MinValue if it is
+        /// not a surface column at all.</summary>
+        int TopMm(int cx, int cz);
+
+        /// <summary>Surface height in metres at one corner of a column, dx/dz in {0,1}.</summary>
+        float CornerMetres(int cx, int cz, int dx, int dz);
+
+        /// <summary>
+        /// Which way to split this column's surface cap into triangles: false for the
+        /// default south-west to north-east, true for the other diagonal.
+        ///
+        /// A quad with four corner heights is not a surface until you say how it folds, and
+        /// picking the wrong fold is not a rounding error -- it flattens a crease the
+        /// surface actually has. Four of the sixteen columns under a cell sit on the fan's
+        /// anti-diagonal and need the other split, so the owner of the surface has to be the
+        /// one that answers this.
+        /// </summary>
+        bool SwapCapDiagonal(int cx, int cz);
+
+        /// <summary>
+        /// Shading normal of the surface at one corner of a column, dx/dz in {0,1}.
+        ///
+        /// A ceded cap that matched the surrounding ground geometrically but shaded off its
+        /// own flat faces would announce itself as a patch of differently-lit hillside --
+        /// the seam solved in position and given straight back in light.
+        /// </summary>
+        Vector3 CornerNormal(int cx, int cz, int dx, int dz);
+    }
+
     public static class SpanMeshBuilder
     {
         public static bool Smooth = true;
+
+        /// <summary>
+        /// Set in a hybrid world, null in a pure span world. When set, any cap sitting at the
+        /// surface defers to it entirely and the clustering below is bypassed.
+        /// </summary>
+        public static ISurfaceCaps Surface;
 
         /// <summary>
         /// Steepest slope between neighbouring caps that still counts as one surface. Past
@@ -40,6 +86,18 @@ namespace Terraform.Span
 
         static readonly List<Vector3> Verts = new List<Vector3>();
         static readonly List<Vector3> Normals = new List<Vector3>();
+
+        /// <summary>
+        /// Planar world XZ, matching CellMeshBuilder exactly. Without this a ceded patch of
+        /// ground would sample the texture at a single point and read as a flat swatch let
+        /// into a textured hillside -- the seam solved geometrically and then given straight
+        /// back in shading.
+        ///
+        /// Offset by the brick's local origin so the mapping is continuous across bricks
+        /// rather than restarting at each one.
+        /// </summary>
+        static readonly List<Vector2> Uvs = new List<Vector2>();
+        static Vector3 UvOrigin;
         static readonly List<int>[] Tris = new List<int>[SpanMaterials.Count];
 
         /// <summary>Remnants of one span after a neighbour's solid is subtracted from it.</summary>
@@ -63,7 +121,10 @@ namespace Terraform.Span
         {
             Verts.Clear();
             Normals.Clear();
+            Uvs.Clear();
             for (int i = 0; i < Tris.Length; i++) Tris[i].Clear();
+
+            UvOrigin = localOrigin;
 
             float size = grid.ColumnSize;
 
@@ -106,7 +167,17 @@ namespace Terraform.Span
                             y01 = Corner(grid, cx, cz, 0, 1, s.TopMm, localOrigin.y);
                         }
 
-                        if (!solidAbove) Cap(wx, wz, size, y00, y10, y11, y01, s.Material, true);
+                        bool swap = Surface != null
+                                 && Surface.TopMm(cx, cz) == s.TopMm
+                                 && Surface.SwapCapDiagonal(cx, cz);
+
+                        if (!solidAbove)
+                        {
+                            if (Surface != null && Surface.TopMm(cx, cz) == s.TopMm)
+                                SurfaceCap(wx, wz, size, y00, y10, y11, y01, s.Material, swap, cx, cz);
+                            else
+                                Cap(wx, wz, size, y00, y10, y11, y01, s.Material, true, swap);
+                        }
 
                         // No downward face on bedrock. It would be two triangles per column
                         // that nothing can ever see.
@@ -142,6 +213,7 @@ namespace Terraform.Span
 
             mesh.SetVertices(Verts);
             mesh.SetNormals(Normals);
+            mesh.SetUVs(0, Uvs);
 
             mesh.subMeshCount = Tris.Length;
             for (int i = 0; i < Tris.Length; i++) mesh.SetTriangles(Tris[i], i, false);
@@ -170,6 +242,12 @@ namespace Terraform.Span
         /// </summary>
         static float Corner(SpanGrid grid, int cx, int cz, int dx, int dz, int ownTopMm, float localY)
         {
+            // A cap at the surface is not this mesher's to shape. Deferring here rather than
+            // at the call sites covers both places a top matters -- the cap itself, and the
+            // foot of a neighbouring wall that has to land on it -- from one line.
+            if (Surface != null && Surface.TopMm(cx, cz) == ownTopMm)
+                return Surface.CornerMetres(cx, cz, dx, dz) - localY;
+
             int n = 0;
 
             for (int j = 0; j < 2; j++)
@@ -292,14 +370,76 @@ namespace Terraform.Span
 
         /// <summary>Horizontal face, one height per corner so a smoothed cap can tilt.</summary>
         static void Cap(float wx, float wz, float size,
-                        float y00, float y10, float y11, float y01, byte material, bool up)
+                        float y00, float y10, float y11, float y01, byte material, bool up,
+                        bool swapDiagonal = false)
         {
             var a = new Vector3(wx, y00, wz);
             var b = new Vector3(wx + size, y10, wz);
             var c = new Vector3(wx + size, y11, wz + size);
             var d = new Vector3(wx, y01, wz + size);
 
-            Quad(a, d, c, b, up ? Vector3.up : Vector3.down, material);
+            Vector3 facing = up ? Vector3.up : Vector3.down;
+
+            // Starting the quad at b folds it along b-d instead of a-c. Winding is derived
+            // downstream, so the order here only chooses the crease.
+            if (swapDiagonal) Quad(b, a, d, c, facing, material);
+            else Quad(a, d, c, b, facing, material);
+        }
+
+        /// <summary>
+        /// A cap that is really the surface: same geometry as Cap, but every corner carries
+        /// the surface normal so it shades as part of the hillside rather than as a facet.
+        /// </summary>
+        static void SurfaceCap(float wx, float wz, float size,
+                               float y00, float y10, float y11, float y01,
+                               byte material, bool swapDiagonal, int cx, int cz)
+        {
+            var a = new Vector3(wx, y00, wz);
+            var b = new Vector3(wx + size, y10, wz);
+            var c = new Vector3(wx + size, y11, wz + size);
+            var d = new Vector3(wx, y01, wz + size);
+
+            Vector3 na = Surface.CornerNormal(cx, cz, 0, 0);
+            Vector3 nb = Surface.CornerNormal(cx, cz, 1, 0);
+            Vector3 nc = Surface.CornerNormal(cx, cz, 1, 1);
+            Vector3 nd = Surface.CornerNormal(cx, cz, 0, 1);
+
+            if (swapDiagonal)
+            {
+                SmoothTriangle(b, a, d, nb, na, nd, material);
+                SmoothTriangle(b, d, c, nb, nd, nc, material);
+            }
+            else
+            {
+                SmoothTriangle(a, d, c, na, nd, nc, material);
+                SmoothTriangle(a, c, b, na, nc, nb, material);
+            }
+        }
+
+        /// <summary>
+        /// Winding is decided from the normals rather than derived from the geometry, because
+        /// on a surface cap the normals are the authority on which way is up.
+        /// </summary>
+        static void SmoothTriangle(Vector3 p0, Vector3 p1, Vector3 p2,
+                                   Vector3 n0, Vector3 n1, Vector3 n2, byte material)
+        {
+            if (Vector3.Dot(Vector3.Cross(p1 - p0, p2 - p0), n0) < 0f)
+            {
+                Vector3 sp = p1; p1 = p2; p2 = sp;
+                Vector3 sn = n1; n1 = n2; n2 = sn;
+            }
+
+            int i = Verts.Count;
+
+            Verts.Add(p0); Verts.Add(p1); Verts.Add(p2);
+            Normals.Add(n0); Normals.Add(n1); Normals.Add(n2);
+
+            Uvs.Add(new Vector2(p0.x + UvOrigin.x, p0.z + UvOrigin.z));
+            Uvs.Add(new Vector2(p1.x + UvOrigin.x, p1.z + UvOrigin.z));
+            Uvs.Add(new Vector2(p2.x + UvOrigin.x, p2.z + UvOrigin.z));
+
+            List<int> tris = Tris[material < Tris.Length ? material : 0];
+            tris.Add(i); tris.Add(i + 1); tris.Add(i + 2);
         }
 
         /// <summary>
@@ -473,6 +613,10 @@ namespace Terraform.Span
 
             Verts.Add(p0); Verts.Add(p1); Verts.Add(p2);
             Normals.Add(normal); Normals.Add(normal); Normals.Add(normal);
+
+            Uvs.Add(new Vector2(p0.x + UvOrigin.x, p0.z + UvOrigin.z));
+            Uvs.Add(new Vector2(p1.x + UvOrigin.x, p1.z + UvOrigin.z));
+            Uvs.Add(new Vector2(p2.x + UvOrigin.x, p2.z + UvOrigin.z));
 
             List<int> tris = Tris[material < Tris.Length ? material : 0];
             tris.Add(i); tris.Add(i + 1); tris.Add(i + 2);

@@ -270,6 +270,180 @@ the cubed walls were judged acceptable.
 
 ---
 
+## D6 — The two representations join at a ceded brick, and the seam is exact
+
+The appearance gate rejected spans as a surface. Two screenshots settled it: at 0.125 m
+the hill is a corrugated cone, and at 1 m it is a ziggurat. The requirement is a realistic
+terrain look, and blocky ground breaks it outright — so the hybrid is not a preference,
+it is the only option left.
+
+**Ownership.** The cell grid owns the surface everywhere. The span grid owns nothing until
+something is dug, and from then on owns whole 4 m bricks — surface included — for as long
+as a void exists inside them. A brick in that state is *ceded*: the surface mesher skips
+its cells and the span mesher draws them.
+
+Ceding a brick rather than a column is deliberate. The boundary is a straight line on a
+coarse grid instead of a ragged outline that moves with every swing of a pick, and because
+the seam is exact its position does not matter visually. **Coarse and exact beats tight
+and approximate.**
+
+### Why the seam costs nothing
+
+The surface is not a formula. Each cell fans eight triangles from its centre to a ring of
+eight boundary points — four corners and four edge midpoints — so it is a piecewise-linear
+function that can be evaluated anywhere. `CellSurface` does exactly that, mirroring
+`CellMeshBuilder` point for point.
+
+Two properties make the join free rather than approximate:
+
+1. **The ring is straight from a corner to the next edge midpoint.** Sampling a cell
+   boundary at a quarter, a half or three quarters lands exactly on the line the surface
+   mesher already draws. A ceded patch's outer edge is therefore the same edge, subdivided.
+2. **A cell creases along both of its diagonals**, because the fan radiates from the
+   centre. At four columns per cell those creases run along column diagonals, so a column
+   sitting on one has to fold the same way the cell does.
+
+Property 2 was a real defect, not a theoretical one. `SpanMeshBuilder.Cap` always split its
+quad south-west to north-east, which is right for the columns on the main diagonal and
+wrong for the four on the anti-diagonal. Measured against synthetic cells:
+
+| Cap fold | Worst departure from the original surface |
+| --- | ---: |
+| Always south-west to north-east | **3.27 m** |
+| Chosen per column | **3.6e-15 m** |
+
+So the claim is not that a ceded patch is close to the surface. It is the same surface,
+subdivided sixteen ways, to floating point. The scene measures this at startup over every
+ceded column and prints it.
+
+### The one hook
+
+`SpanMeshBuilder.Corner` — the clustering rule that decides a smoothed cap's corner height
+— defers to the surface whenever a cap sits at ground level. One line, in one place, and it
+propagates to both things that need it: the cap itself, and the foot of a neighbouring wall
+that has to land on that cap. That is the same lesson as both mesh tears: **whenever
+geometry is derived per element, every shared edge has to ask one question.**
+
+### What the surface and the spans each keep
+
+| | Owner | Notes |
+| --- | --- | --- |
+| Ground height | cell grid | 1 m cells, unchanged, including flatten and the terracing release |
+| Layered materials | span grid | lowering exposes what is underneath, which falls out of trimming the top rather than needing a rule |
+| Voids | span grid | 0.25 m columns, millimetre heights |
+| Geology | neither | computed from position; columns materialise on first touch |
+
+Columns are **not** stored for untouched ground. At 0.25 m over 64 x 64 m there are 65,536
+of them; the scene materialises only those inside a ceded brick and a one-column halo. That
+is the "compute the geology, store the deviations" principle actually exercised rather than
+asserted.
+
+### The portal, and why it matters
+
+A level adit driven into a rising slope has no usable mouth — the roof only thickens well
+inside the hill, so the entrance ends up buried and you drop into it rather than walk in.
+The scene answers it the way a real mine does: **the surface model cuts a bench, and the
+tunnel starts from its face.** The bench cells are flattened, so the face is a genuine
+vertical wall drawn by the surface mesher, and the mouth is a hole punched in that wall by
+the span mesher. It is the hardest case for the seam and it is the first thing to look at.
+
+That division of labour is the design in one sentence: **the shovel shapes open ground, the
+pick goes underground.**
+
+### The roof rule
+
+Lowering ground until it meets a tunnel is a real event needing real rules — collapse, or a
+hole you can fall down. Until those exist, a surface edit leaving less than 0.4 m over a
+void is refused. The check runs after the command and undoes it, rather than predicting
+derived corners two cells out beforehand: a duplicate rule drifts out of step with the rule
+it duplicates.
+
+### The bug that hid the whole thing first time
+
+The hybrid scene silently grew a second world. `P0Bootstrap` carries a
+`RuntimeInitializeOnLoadMethod` that spawns it into any scene without one — which is what
+makes the plain demo need no setup at all — and it stood down for `SpanGateBootstrap` by
+name. A third bootstrap was written and never added to that list.
+
+The symptoms all looked like geometry faults and none of them were: two HUDs printing over
+each other, `M` appearing to change the terrain (it was the other bootstrap's model toggle),
+brick-shaped mottling (z-fighting between the two surfaces), and — the expensive one —
+**no dug hole ever becoming visible, because an intact surface mesh sat coplanar over every
+one of them.**
+
+It also could not be defended against from the hybrid's side: `AfterSceneLoad` runs after
+the scene's own `Awake`, so a scene bootstrap looking for the intruder finds nothing,
+because it does not exist yet.
+
+Fixed with an `IWorldBootstrap` marker interface that the auto-spawn defers to. **A guard
+that enumerates the things it must know about goes stale the first time somebody adds one
+without reading it; a guard things opt into does not.**
+
+### The terrain read as blocky because of shading, not geometry
+
+The first look at the hybrid surface was rejected as too faceted, with a diamond pattern
+across every hill. The instinct was that the eight boundary points per cell were not
+enough.
+
+They were not the problem, and adding more could not have helped: a cell stores ONE height,
+and all nine of a fan values are derived from it, so extra boundary points would only
+interpolate information that is not there.
+
+The cause was in CellMeshBuilder. Every triangle carried a single face normal, so every
+facet was a visible step in the lighting and the fan topology showed through as a diamond.
+Nothing was smooth-shaded.
+
+Vertex normals now live in CellSurface next to the heights, keyed by position AND height:
+two cells agreeing at a shared point blend, two disagreeing keep their hard edge. That is
+the same test the mesh already uses to decide where to put a vertical face, so shading and
+geometry cannot drift apart, and a levelled pad keeps its crisp rim.
+
+**The span mesher reads the same normals.** A ceded cap that matched the surface
+geometrically but shaded off its own flat faces would have announced itself as a patch of
+differently-lit hillside -- the seam solved in position and handed straight back in light.
+
+Remaining honest gap: the demo renders untextured flat colour, and a flat colour is what
+makes every remaining facet visible. A scene Terrain -- a Gaia build, say -- is now imported
+if one is present, and its colouring baked to a world-XZ texture that lands identically on
+both meshers because both write world-XZ UVs.
+
+### The roof rule refuses edits, it does not lock ground
+
+First cut tested the resulting roof thickness on its own and refused anything under 0.4 m.
+That locked out far more ground than it protected. A resync reaches two cells in every
+direction, so one thin roof anywhere in that window vetoed every edit near it -- including
+RAISING ground, which thickens the roof, and including cells whose surface the edit never
+moved.
+
+Now only a cut that makes a roof worse is refused: a column that is not being lowered
+cannot break, and one that is gets judged on what it actually leaves. Improve-or-leave-alone
+is the same shape as the existing step limits, and unlike a radius it needs no tuning.
+
+That was still not enough, because of what counts as a roof. Cutting a cube down from open
+ground leaves a few centimetres of solid over air all round the rim, wherever the ground was
+higher than the top of the cube. Those slivers are geometrically real but they are the lip
+of a pit, not a tunnel roof -- and every surface dig made a ring of them, each vetoing
+lowering two cells out in every direction. So a roof thinner than the minimum is not
+defended at all. A real roof may not be cut below the threshold; a lip can be shovelled
+away, and the hole tidies up instead of freezing the ground around it.
+
+MinRoof is 0.4 m and is a placeholder for rules that do not exist yet -- collapse, or a hole
+you can fall down. It is one constant in HybridWorld.
+
+### Where they genuinely disagree
+
+**Mining downward from open ground.** The pick cuts the column below the surface, and the
+cell grid still holds the old height. That mismatch is deliberately kept — it is what tells
+the mesher a cap is dug rather than natural, and what stops a terraform edit two cells away
+from quietly filling the pit back in. But it means cell height is no longer the truth about
+that column, so cut/fill accounting and any future rule reading cell height would be wrong
+there.
+
+The likely resolution is a rule rather than a mechanism: **surface material is the shovel's
+to remove, not the pick's.** That is worth deciding deliberately rather than discovering.
+
+---
+
 ## Corrections on record
 
 Recorded so they are not re-argued. All four are cases where a plausible inference was

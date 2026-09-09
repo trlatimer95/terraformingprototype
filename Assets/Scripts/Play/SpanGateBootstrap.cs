@@ -15,7 +15,7 @@ namespace Terraform.Play
     /// That second number is the one the earlier projection was guessing at. A whole-world
     /// bake says nothing about a per-edit cost; rebuilding the touched bricks does.
     /// </summary>
-    public sealed class SpanGateBootstrap : MonoBehaviour
+    public sealed class SpanGateBootstrap : MonoBehaviour, IWorldBootstrap
     {
         [Header("World")]
         public float AreaMetres = 32f;
