@@ -190,7 +190,7 @@ namespace Terraform.Play
             BuildMaterials();
             BuildSurface();
 
-            _world = new HybridWorld(_cells, ColumnSize, CellsPerBrick, FloorMetres);
+            _world = new HybridWorld(new CellGround(_cells), ColumnSize, CellsPerBrick, FloorMetres);
             SpanMeshBuilder.Surface = _world;
             SpanMeshBuilder.Smooth = true;
             CellMeshBuilder.Ceded = _world.CellCeded;
@@ -762,6 +762,8 @@ namespace Terraform.Play
 
             // The ore sits around the far end of the drift, so following it is the reason to
             // keep digging rather than stopping at the first rock.
+            // Kept as the fallback shape for when the field is switched off; the field
+            // itself needs no placing, since it already covers everywhere.
             _world.OreFootprint = new Rect(PortalX + 3.5f, PortalZ - 2f, 5f, 8f);
             _world.OreTopMetres = PortalFloor + 0.4f;
             _world.OreBottomMetres = PortalFloor - 2.6f;

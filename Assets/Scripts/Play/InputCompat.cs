@@ -91,6 +91,10 @@ namespace Terraform.Play
         public static bool SkyPressed { get { return Down(Key.L); } }
         public static bool SpanResolutionPressed { get { return Down(Key.C); } }
         public static bool SmoothPressed { get { return Down(Key.V); } }
+        public static bool MarkersPressed { get { return Down(Key.G); } }
+        public static bool SquarePressed { get { return Down(Key.K); } }
+        public static bool DepositPressed { get { return Down(Key.O); } }
+        public static bool PanelPressed { get { return Down(Key.F1); } }
 
 #elif ENABLE_LEGACY_INPUT_MANAGER
 
@@ -148,6 +152,10 @@ namespace Terraform.Play
         public static bool SkyPressed { get { return Input.GetKeyDown(KeyCode.L); } }
         public static bool SpanResolutionPressed { get { return Input.GetKeyDown(KeyCode.C); } }
         public static bool SmoothPressed { get { return Input.GetKeyDown(KeyCode.V); } }
+        public static bool MarkersPressed { get { return Input.GetKeyDown(KeyCode.G); } }
+        public static bool SquarePressed { get { return Input.GetKeyDown(KeyCode.K); } }
+        public static bool DepositPressed { get { return Input.GetKeyDown(KeyCode.O); } }
+        public static bool PanelPressed { get { return Input.GetKeyDown(KeyCode.F1); } }
 
 #else
 
@@ -186,6 +194,10 @@ namespace Terraform.Play
         public static bool SkyPressed { get { return false; } }
         public static bool SpanResolutionPressed { get { return false; } }
         public static bool SmoothPressed { get { return false; } }
+        public static bool MarkersPressed { get { return false; } }
+        public static bool SquarePressed { get { return false; } }
+        public static bool DepositPressed { get { return false; } }
+        public static bool PanelPressed { get { return false; } }
 
 #endif
 

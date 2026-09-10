@@ -40,3 +40,18 @@ desktop.ini
 #
 # Verify vendor data survives by opening a clean checkout, not by assuming that the scene
 # file being present means its data is.
+
+# Third-party Asset Store content.
+#
+# Licensed per seat, so it must not be redistributed through a shared repository -- this one
+# has a public-facing remote. Each developer imports Gaia from their own account and the
+# terrain textures arrive with it.
+#
+# Size is the lesser reason: these twelve files are about 186 MB against a few hundred KB of
+# code, and git keeps whatever it is given forever.
+/Assets/TerrainTextures/
+/Assets/Procedural Worlds/
+
+# Generated terrain (heights and splatmap) is our own output and small, so it stays tracked.
+# Without the textures above, its layers will have dangling references and TerrainImport says
+# so on load rather than silently rendering flat colour.

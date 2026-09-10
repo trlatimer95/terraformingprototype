@@ -35,6 +35,17 @@ namespace Terraform.Play
         public const float SubsoilDepth = 1.6f;
 
         /// <summary>
+        /// Depth of topsoil and subsoil at one column, in metres. Null means the constants
+        /// above apply everywhere.
+        ///
+        /// Uniform strata are what make a bare rock face turn to grass the moment it is dug
+        /// into: the surface says one thing and the column underneath says another, because
+        /// nothing ever told the column what the surface was. A host that knows -- from a
+        /// splatmap, or from real geology later -- answers here instead.
+        /// </summary>
+        public System.Func<int, int, Vector2> SoilProfile;
+
+        /// <summary>
         /// Thinnest roof a surface edit may leave over a void. Lowering ground until it
         /// meets a tunnel is a real event that needs real rules -- collapse, or a hole you
         /// can fall down. Until those exist the edit is refused, which is honest, whereas
@@ -52,7 +63,11 @@ namespace Terraform.Play
         /// </summary>
         public const int SurfaceInfluenceCells = 2;
 
-        public readonly CellGrid Cells;
+        /// <summary>
+        /// The surface this underground is joined to -- the cell model or the vertex model,
+        /// behind one interface. Nothing below the surface knows or cares which.
+        /// </summary>
+        public readonly IGroundSurface Ground;
         public readonly SpanGrid Spans;
 
         public readonly int ColumnsPerCell;
@@ -92,23 +107,23 @@ namespace Terraform.Play
         /// <summary>How much roof the refused edit would have left, in metres.</summary>
         public float LastRoofMetres { get; private set; }
 
-        public HybridWorld(CellGrid cells, float columnSize, int cellsPerBrick, float floorMetres)
+        public HybridWorld(IGroundSurface ground, float columnSize, int cellsPerBrick, float floorMetres)
         {
-            Cells = cells;
+            Ground = ground;
 
-            ColumnsPerCell = Mathf.RoundToInt(cells.CellSize / columnSize);
+            ColumnsPerCell = Mathf.RoundToInt(ground.CellSize / columnSize);
             CellsPerBrick = cellsPerBrick;
             ColumnsPerBrick = ColumnsPerCell * cellsPerBrick;
 
             Spans = new SpanGrid(
-                cells.CellsX * ColumnsPerCell,
-                cells.CellsZ * ColumnsPerCell,
-                cells.CellSize / ColumnsPerCell,
-                cells.Origin,
+                ground.CellsX * ColumnsPerCell,
+                ground.CellsZ * ColumnsPerCell,
+                ground.CellSize / ColumnsPerCell,
+                ground.Origin,
                 SpanGrid.ToMm(floorMetres));
 
-            BricksX = Mathf.CeilToInt(cells.CellsX / (float)cellsPerBrick);
-            BricksZ = Mathf.CeilToInt(cells.CellsZ / (float)cellsPerBrick);
+            BricksX = Mathf.CeilToInt(ground.CellsX / (float)cellsPerBrick);
+            BricksZ = Mathf.CeilToInt(ground.CellsZ / (float)cellsPerBrick);
 
             _surfaceMm = new int[Spans.ColumnsX * Spans.ColumnsZ];
             for (int i = 0; i < _surfaceMm.Length; i++) _surfaceMm[i] = int.MinValue;
@@ -151,9 +166,8 @@ namespace Terraform.Play
 
         public float CornerMetres(int colX, int colZ, int dx, int dz)
         {
-            return CellSurface.MetresAt(Cells,
-                (colX + dx) / (float)ColumnsPerCell,
-                (colZ + dz) / (float)ColumnsPerCell);
+            return Ground.MetresAt((colX + dx) / (float)ColumnsPerCell,
+                                   (colZ + dz) / (float)ColumnsPerCell);
         }
 
         /// <summary>
@@ -171,25 +185,49 @@ namespace Terraform.Play
         /// </summary>
         public bool SwapCapDiagonal(int colX, int colZ)
         {
-            int ix = colX % ColumnsPerCell;
-            int iz = colZ % ColumnsPerCell;
+            return Ground.SwapCapDiagonal(colX / ColumnsPerCell, colZ / ColumnsPerCell,
+                                          colX % ColumnsPerCell, colZ % ColumnsPerCell,
+                                          ColumnsPerCell);
+        }
 
-            return ix + iz == ColumnsPerCell - 1;
+        /// <summary>
+        /// Set by a host that draws the intact surface some other way -- a Unity Terrain with
+        /// holes, say. Null means the spans draw all of it, which is the custom-mesh case.
+        /// </summary>
+        public System.Func<int, int, bool> SurfaceCoveredElsewhere;
+
+        public bool DrawSurfaceCap(int colX, int colZ)
+        {
+            return SurfaceCoveredElsewhere == null || !SurfaceCoveredElsewhere(colX, colZ);
+        }
+
+        /// <summary>
+        /// Has this column been dug open from above? True when its topmost solid no longer
+        /// reaches the height the surface says it should -- which is exactly the condition
+        /// for needing a hole in whatever draws that surface.
+        /// </summary>
+        public bool ColumnOpen(int colX, int colZ)
+        {
+            if (!Spans.InBounds(colX, colZ)) return false;
+
+            int i = ColIndex(colX, colZ);
+            if (_surfaceMm[i] == int.MinValue) return false;
+
+            List<MaterialSpan> column = Spans.Column(colX, colZ);
+            return column.Count == 0 || column[column.Count - 1].TopMm < _surfaceMm[i];
         }
 
         public Vector3 CornerNormal(int colX, int colZ, int dx, int dz)
         {
-            return CellSurface.NormalAt(Cells,
-                (colX + dx) / (float)ColumnsPerCell,
-                (colZ + dz) / (float)ColumnsPerCell);
+            return Ground.NormalAt((colX + dx) / (float)ColumnsPerCell,
+                                   (colZ + dz) / (float)ColumnsPerCell);
         }
 
         /// <summary>Surface at a column's centre, which is the height its spans stop at.</summary>
         public int SurfaceMmAt(int colX, int colZ)
         {
-            float metres = CellSurface.MetresAt(Cells,
-                (colX + 0.5f) / ColumnsPerCell,
-                (colZ + 0.5f) / ColumnsPerCell);
+            float metres = Ground.MetresAt((colX + 0.5f) / ColumnsPerCell,
+                                           (colZ + 0.5f) / ColumnsPerCell);
 
             return SpanGrid.ToMm(metres);
         }
@@ -218,10 +256,20 @@ namespace Terraform.Play
                 return;
             }
 
-            int soil = Mathf.Max(floor, top - SpanGrid.ToMm(TopsoilDepth));
-            int sub = Mathf.Max(floor, soil - SpanGrid.ToMm(SubsoilDepth));
+            float topsoil = TopsoilDepth;
+            float subsoil = SubsoilDepth;
 
-            if (sub > floor) Spans.Append(colX, colZ, floor, sub, RockOrOre(floor, sub, colX, colZ));
+            if (SoilProfile != null)
+            {
+                Vector2 profile = SoilProfile(colX, colZ);
+                topsoil = profile.x;
+                subsoil = profile.y;
+            }
+
+            int soil = Mathf.Max(floor, top - SpanGrid.ToMm(topsoil));
+            int sub = Mathf.Max(floor, soil - SpanGrid.ToMm(subsoil));
+
+            if (sub > floor) AppendRock(colX, colZ, floor, sub);
             if (soil > sub) Spans.Append(colX, colZ, sub, soil, SpanMaterials.Subsoil);
             if (top > soil) Spans.Append(colX, colZ, soil, top, SpanMaterials.Topsoil);
 
@@ -230,27 +278,90 @@ namespace Terraform.Play
         }
 
         /// <summary>
-        /// One ore body, so there is a reason to follow a vein rather than dig a box. Its
-        /// shape is a pure function of position -- computed, never stored, which is what
-        /// lets an untouched column stay a rule instead of data.
+        /// Whether ore is scattered across the whole world, or confined to one demonstration
+        /// body. The field version is a pure function of position, so nothing is stored and
+        /// every machine computes the same answer.
         /// </summary>
+        public bool UseOreField = true;
+
+        /// <summary>
+        /// The deposit field. Server-side: it carries the seed that decides where everything
+        /// is, and a client that had it would not need to prospect.
+        /// </summary>
+        public OreField Ore;
+
+        /// <summary>The single body, used when UseOreField is off.</summary>
         public Rect OreFootprint = new Rect(4f, -14f, 9f, 8f);
         public float OreTopMetres = 3.6f;
         public float OreBottomMetres = 0.8f;
 
-        byte RockOrOre(int bottomMm, int topMm, int colX, int colZ)
+        /// <summary>
+        /// Fill the rock part of a column, split wherever the mineral changes.
+        ///
+        /// One span for the whole of the rock cannot hold a seam. Deciding its material from
+        /// a single midpoint sample means a three-metre band of coal, forty metres down a
+        /// column, is judged by a point twenty metres away from it -- so the answer is always
+        /// plain rock and no deposit ever appears, however carefully it was placed.
+        ///
+        /// Walking the column in slices and coalescing equal runs is what turns the field
+        /// into geometry. Only the top of the rock needs walking: nothing is buried deeper
+        /// than OreField.MaxDepth, so everything below that is one span of rock and costs one
+        /// append rather than eighty.
+        ///
+        /// Depth is measured from the ROCK HEAD, not from the ground. Ore sits in rock, so a
+        /// seam should not move up and down with whatever thickness of soil happens to lie on
+        /// top -- and where rock reaches the surface the two coincide, which is what lets a
+        /// seam outcrop on a bare face instead of always hiding under turf.
+        /// </summary>
+        void AppendRock(int colX, int colZ, int floorMm, int rockHeadMm)
         {
             float wx = Spans.WorldX(colX) + Spans.ColumnSize * 0.5f;
             float wz = Spans.WorldZ(colZ) + Spans.ColumnSize * 0.5f;
 
+            if (!UseOreField || Ore == null)
+            {
+                Spans.Append(colX, colZ, floorMm, rockHeadMm, LegacyBody(wx, wz, floorMm, rockHeadMm));
+                return;
+            }
+
+            int sliceMm = Mathf.Max(1, SpanGrid.ToMm(OreField.SliceMetres));
+            int deepestMm = Mathf.Max(floorMm, rockHeadMm - SpanGrid.ToMm(OreField.MaxDepth));
+
+            // Everything below anything a deposit can reach, in one piece.
+            if (deepestMm > floorMm) Spans.Append(colX, colZ, floorMm, deepestMm, SpanMaterials.Rock);
+
+            int runBottom = deepestMm;
+            byte runMaterial = 255;
+
+            for (int y = deepestMm; y < rockHeadMm; y += sliceMm)
+            {
+                int top = Mathf.Min(y + sliceMm, rockHeadMm);
+
+                float depth = SpanGrid.ToMetres(rockHeadMm - (y + top) / 2);
+                byte m = Ore.MaterialAt(wx, depth, wz);
+
+                if (runMaterial == 255) { runMaterial = m; runBottom = y; continue; }
+
+                if (m == runMaterial) continue;
+
+                Spans.Append(colX, colZ, runBottom, y, runMaterial);
+                runMaterial = m;
+                runBottom = y;
+            }
+
+            if (runMaterial != 255 && rockHeadMm > runBottom)
+                Spans.Append(colX, colZ, runBottom, rockHeadMm, runMaterial);
+        }
+
+        /// <summary>The single demonstration body, for when the field is switched off.</summary>
+        byte LegacyBody(float wx, float wz, int bottomMm, int topMm)
+        {
             if (!OreFootprint.Contains(new Vector2(wx, wz))) return SpanMaterials.Rock;
 
-            // A whole-span decision, so the band is approximate at its edges. Splitting the
-            // rock into three spans would be exact and is what a real store should do; this
-            // is a demo body and that difference is not what is being tested here.
-            int mid = (bottomMm + topMm) / 2;
-            return mid >= SpanGrid.ToMm(OreBottomMetres) && mid <= SpanGrid.ToMm(OreTopMetres)
-                ? SpanMaterials.Ore
+            float mid = SpanGrid.ToMetres((bottomMm + topMm) / 2);
+
+            return mid >= OreBottomMetres && mid <= OreTopMetres
+                ? SpanMaterials.Iron
                 : SpanMaterials.Rock;
         }
 
@@ -405,21 +516,67 @@ namespace Terraform.Play
         /// </summary>
         public float Mine(Vector3 point, float bite, byte material, bool selective)
         {
-            float half = bite * 0.5f;
+            return Mine(point, bite, bite, material, selective);
+        }
+
+        /// <summary>
+        /// Cut a box out of the world, with its footprint and its depth given separately.
+        ///
+        /// They are separate because they answer different questions. Depth is how much one
+        /// swing takes. Footprint decides whether an opening can leave part of a surface cell
+        /// still standing -- and if it can, whatever draws that surface has to hole the whole
+        /// cell anyway and something else must redraw the remainder, which is how the ground
+        /// around a small shaft ends up looking different from the ground beside it.
+        ///
+        /// Squaring the footprint to a whole cell removes the case rather than papering over
+        /// it: what is opened is exactly what stops being drawn.
+        /// </summary>
+        public float Mine(Vector3 point, float footprint, float depth, byte material, bool selective)
+        {
+            return Mine(point, footprint, depth, material, selective, false);
+        }
+
+        /// <summary>
+        /// As above, but when followSurface is set each column is cut from its OWN top rather
+        /// than over one shared height band.
+        ///
+        /// Ground is rarely level. A cell-wide cut at a fixed height opens the low corner and
+        /// leaves the high one still capped, so the cell counts as dug -- it has an opening --
+        /// while part of its surface is left standing for the spans to draw. That leftover lid
+        /// is intact ground rendered by the wrong system, which is what the stray patches of
+        /// blurry turf hanging over a hole were.
+        ///
+        /// Following each column takes a layer off the cell instead of a slab out of it, which
+        /// is what a spade does anyway.
+        /// </summary>
+        public float Mine(Vector3 point, float footprint, float depth, byte material,
+                          bool selective, bool followSurface)
+        {
+            float half = footprint * 0.5f;
+            float halfDepth = depth * 0.5f;
 
             int x0 = Mathf.FloorToInt((point.x - half - Spans.Origin.x) / Spans.ColumnSize);
-            int x1 = Mathf.FloorToInt((point.x + half - Spans.Origin.x) / Spans.ColumnSize);
+            int x1 = Mathf.FloorToInt((point.x + half - Spans.Origin.x - 0.0001f) / Spans.ColumnSize);
             int z0 = Mathf.FloorToInt((point.z - half - Spans.Origin.z) / Spans.ColumnSize);
-            int z1 = Mathf.FloorToInt((point.z + half - Spans.Origin.z) / Spans.ColumnSize);
+            int z1 = Mathf.FloorToInt((point.z + half - Spans.Origin.z - 0.0001f) / Spans.ColumnSize);
 
-            int bottomMm = SpanGrid.ToMm(point.y - half);
-            int topMm = SpanGrid.ToMm(point.y + half);
+            int bottomMm = SpanGrid.ToMm(point.y - halfDepth);
+            int topMm = SpanGrid.ToMm(point.y + halfDepth);
 
-            // Cede first: the columns have to exist before anything can be taken out of
-            // them, and ceding is what materialises them.
-            CedeColumnRange(x0, z0, x1, z1);
+            // Cede first: the columns have to exist before anything can be taken out of them,
+            // and ceding is what materialises them.
+            //
+            // One column wider than the cut, because a wall belongs to the TALLER of the two
+            // columns it stands between. Dig against a brick boundary and that taller column
+            // lives in the brick next door -- which, if it was never ceded, is never drawn at
+            // all. The result is a wall with no mesh and no collider: you see through the
+            // world and cannot touch what is missing, and only ever where the ground above it
+            // was left untouched.
+            CedeColumnRange(x0 - 1, z0 - 1, x1 + 1, z1 + 1);
 
             float before = SolidVolume(x0, z0, x1, z1);
+
+            int depthMm = SpanGrid.ToMm(depth);
 
             for (int cz = z0; cz <= z1; cz++)
             {
@@ -427,8 +584,22 @@ namespace Terraform.Play
                 {
                     if (!Spans.InBounds(cx, cz)) continue;
 
-                    if (selective) Spans.SubtractMaterial(cx, cz, bottomMm, topMm, material);
-                    else Spans.Subtract(cx, cz, bottomMm, topMm);
+                    int lo = bottomMm;
+                    int hi = topMm;
+
+                    if (followSurface)
+                    {
+                        List<MaterialSpan> column = Spans.Column(cx, cz);
+                        if (column.Count == 0) continue;
+
+                        // A little above the top, so nothing survives as a paper-thin skin
+                        // where the cut lands exactly on a span boundary.
+                        hi = column[column.Count - 1].TopMm + 1;
+                        lo = hi - depthMm;
+                    }
+
+                    if (selective) Spans.SubtractMaterial(cx, cz, lo, hi, material);
+                    else Spans.Subtract(cx, cz, lo, hi);
                 }
             }
 

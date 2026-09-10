@@ -190,19 +190,43 @@ namespace Terraform.Core
 
             if (MaxStepUnits <= 0) return true;
 
-            return Within(grid, target, Vx - 1, Vz)
-                && Within(grid, target, Vx + 1, Vz)
-                && Within(grid, target, Vx, Vz - 1)
-                && Within(grid, target, Vx, Vz + 1);
+            // All eight, not just the four orthogonal ones. Checking only the axes leaves
+            // the diagonals free to become cliffs: a vertex can be walled off from the four
+            // it touches directly and still stand several metres above the four at its
+            // corners, which is the same unsupported step turned forty-five degrees.
+            for (int i = 0; i < 8; i++)
+            {
+                if (!Within(grid, target, Vx + StepX[i], Vz + StepZ[i], StepScale[i])) return false;
+            }
+
+            return true;
         }
 
-        bool Within(HeightGrid grid, int target, int nx, int nz)
+        static readonly int[] StepX = { -1, 1, 0, 0, -1, 1, -1, 1 };
+        static readonly int[] StepZ = { 0, 0, -1, 1, -1, -1, 1, 1 };
+
+        /// <summary>
+        /// How much further apart a neighbour is than an orthogonal one. A diagonal vertex
+        /// sits root-two spacings away, so at the same SLOPE it tolerates root-two times the
+        /// height difference. Using one height limit for both would make diagonals the
+        /// strictest direction on the grid for no physical reason -- the same mistake as a
+        /// fixed smoothing threshold across changing resolutions, rotated forty-five degrees.
+        /// </summary>
+        static readonly float[] StepScale =
+        {
+            1f, 1f, 1f, 1f,
+            1.41421356f, 1.41421356f, 1.41421356f, 1.41421356f
+        };
+
+        bool Within(HeightGrid grid, int target, int nx, int nz, float scale)
         {
             if (!grid.InBounds(nx, nz)) return true;
 
+            int limit = Mathf.RoundToInt(MaxStepUnits * scale);
+
             int neighbour = grid.GetRaw(nx, nz);
             int after = Mathf.Abs(target - neighbour);
-            if (after <= MaxStepUnits) return true;
+            if (after <= limit) return true;
 
             // Same concession the cell model makes: ground that was generated steeper than
             // the guard allows can still be worked, as long as the edit does not deepen

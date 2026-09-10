@@ -210,6 +210,45 @@ namespace Terraform.View
         /// what a terrain hole sample covers. This is the basis of the hybrid posture:
         /// heightmap surface, hole at the shaft mouth, generated geometry below.
         /// </summary>
+        /// <summary>
+        /// Set one cell solid or holed without pushing the change. Pair with CommitHoles:
+        /// an excavation opens many cells at once, and calling SetHoles per cell uploads the
+        /// whole mask every time.
+        /// </summary>
+        public void SetHole(int cx, int cz, bool solid)
+        {
+            if (!Valid) return;
+            if (cx < 0 || cz < 0 || cx >= _grid.CellsX || cz >= _grid.CellsZ) return;
+
+            int hx = Mathf.Clamp(cx * _holesRes / _grid.CellsX, 0, _holesRes - 1);
+            int hz = Mathf.Clamp(cz * _holesRes / _grid.CellsZ, 0, _holesRes - 1);
+
+            _solid[hz, hx] = solid;
+        }
+
+        /// <summary>Upload the hole mask once. Returns false if Unity rejected it.</summary>
+        public bool CommitHoles()
+        {
+            if (!Valid) return false;
+
+            try
+            {
+                _data.SetHoles(0, 0, _solid);   // false means hole
+                LastHoleError = null;
+            }
+            catch (System.Exception e)
+            {
+                LastHoleError = e.GetType().Name;
+                Debug.LogError(string.Format(
+                    "[UnityTerrainView] SetHoles failed. holesResolution={0}, array={1}x{2}. {3}",
+                    _holesRes, _solid.GetLength(0), _solid.GetLength(1), e));
+                return false;
+            }
+
+            RecountHoles();
+            return true;
+        }
+
         public bool ToggleHole(int cx, int cz)
         {
             if (!Valid) return false;

@@ -73,7 +73,7 @@ namespace Terraform.Span
                     int subsoilMm = surfaceMm - SpanGrid.ToMm(SubsoilDepth);
 
                     // Bottom up, so Append can coalesce touching same-material runs.
-                    byte deep = OreHere(grid, cx, cz) ? SpanMaterials.Ore : SpanMaterials.Rock;
+                    byte deep = OreHere(grid, cx, cz) ? SpanMaterials.Iron : SpanMaterials.Rock;
 
                     grid.Append(cx, cz, floorMm, Mathf.Max(floorMm, subsoilMm), deep);
                     grid.Append(cx, cz, Mathf.Max(floorMm, subsoilMm), Mathf.Max(floorMm, topsoilMm), SpanMaterials.Subsoil);

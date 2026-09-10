@@ -430,6 +430,112 @@ away, and the hole tidies up instead of freezing the ground around it.
 MinRoof is 0.4 m and is a placeholder for rules that do not exist yet -- collapse, or a hole
 you can fall down. It is one constant in HybridWorld.
 
+### D7 — no vertical faces on the surface, and a native-Terrain mode to match
+
+Requirement clarified: no steps or terracing with vertical edges. Two flat areas at
+different heights must not sit directly against each other. Near-vertical is wanted where
+the height difference is large; exactly vertical is not.
+
+This changes what the cell model is for. Its two distinguishing behaviours are the stored
+centre point and flatten-pins-corners, and the second exists purely to produce vertical pad
+walls. Remove that and what is left is conceptual clarity — one height per cell, one number
+to display — not geometry. **D1 is open again.**
+
+It also makes the rule structural rather than enforced in a heightfield: two adjacent cells
+share their edge vertices, which can hold only one value, so levelling one cell necessarily
+tilts its neighbour into a slope. Nothing has to police it.
+
+Built `NativeHybridBootstrap`: the same hybrid with Unity Terrain drawing the surface.
+
+| | Custom-mesh scene | Native scene |
+| --- | --- | --- |
+| Surface | our mesh from `CellGrid` | Unity Terrain from `HeightGrid` |
+| Openings | cells dropped from our mesh | `TerrainData.SetHoles` |
+| Underground | spans | spans — identical code |
+| Ceding, seam, roof rule, accounting | shared | shared |
+
+`IGroundSurface` is what makes that sharing possible: the span store needs a height, a
+normal, and a fold rule at an arbitrary point, and nothing else. Two implementations,
+`CellGround` and `VertexGround`, and `HybridWorld` never learns which it has. That also keeps
+the comparison honest — if the modes shared no code, the difference between them would
+include every incidental difference in how they were written.
+
+**The seam is exact by construction here, for a different reason than in the custom-mesh
+scene.** A hole sample covers exactly one cell and ceding works in whole bricks, so the
+terrain always stops on a straight line between heightmap samples — and the span mesher
+samples those same vertices.
+
+**The risk is LOD, and only LOD.** Raise `heightmapPixelError` and the terrain simplifies
+while the ceded patches do not. Cracks would appear only at distance, which is exactly where
+a close-up screenshot misses them. The last viewpoint in the scene is a distance view and
+`[` / `]` drive pixel error, so the test takes seconds.
+
+Accounting note carried over from the review: the ledger must read a fixed authoritative
+triangulation at full resolution, never the LOD-simplified display mesh, or inventory would
+change when the camera moves. `HeightGrid.CellVolume` already uses the same flatter-diagonal
+rule as the mesher, which is the fix for the 2.033 m³ error found earlier.
+
+### The vertex is the unit of work, and everything else was scaffolding
+
+The native scene first addressed a 1 m interaction CELL on a 0.25 m heightmap, on the
+argument that finer sampling would shrink the footprint of an edit. Three problems followed,
+each fixed by adding machinery:
+
+1. A cell does not own its vertices, so writing the block applied the delta twice to every
+   shared column. Two cells raised equally grew a wall between them.
+2. Weighting the block by how many cells own each vertex fixed that, and made the cost
+   exactly the cell area times the step at any resolution.
+3. The weights then quantised. A step of 0.1 m is 2 raw units; a quarter weight is 0.5 units
+   and rounds to zero, so every cell corner stayed put while its edges rose. The boundary
+   went 0, 1, 1, 1, 0 -- a corrugation along every cell edge.
+
+The third one was the tell. **All of it was scaffolding around using the wrong unit.**
+
+On a heightfield the vertex is the atom. Addressing it directly needs none of the above:
+one click moves one point by the full step, nothing is shared, nothing is weighted, nothing
+quantises, and the volume is exactly the vertex area times the movement. The first vertex
+prototype did this and was described as giving a lot of control -- which it did, for
+structural reasons, not incidental ones.
+
+Sampling is back to 1 m on the surface. Finer sampling remains right underground, where
+nobody aims at a column.
+
+Flatten still works on a cell, because levelling is inherently about an area rather than a
+point. That asymmetry is the design, not an inconsistency: you sculpt points and you level
+areas.
+
+**Recorded because the mistake is worth not repeating: adding a mechanism to fix the last
+mechanism is the signal to go back one step, not forward one.**
+
+### The repose guard now checks all eight neighbours
+
+It checked only the four orthogonal ones, which leaves the diagonals free to become cliffs:
+a vertex can be within the limit of the four it touches directly and still stand metres above
+the four at its corners. Same unsupported step, rotated forty-five degrees.
+
+A diagonal neighbour is root-two spacings away, so at the same SLOPE it tolerates root-two
+times the height difference -- 3.00 m orthogonally, 4.25 m diagonally at a 3:1 limit. Using
+one height for both would have made diagonals the strictest direction on the grid for no
+physical reason, which is the fixed-height-versus-ratio mistake again in a new place.
+
+Simulated to confirm the intended workflow survives: the centre rises 30 clicks to 3.00 m
+and blocks, one step on the eight around it releases it, and it rises again. The refusal now
+says the two limits and that raising the ring is what unblocks it, rather than only that
+something was refused.
+
+### The step limit was a height where a slope was meant
+
+Refining the heightmap from 1 m to 0.25 m samples left MaxStepUnits at 3 m between adjacent
+vertices. That is 72 degrees at metre spacing and **85 degrees at quarter-metre spacing** --
+twelve metres of rise per metre of run. Repeated clicks built towers with vertical walls and
+canyons beside them.
+
+**This is the third time the same mistake has appeared**: the span smoothing threshold was a
+fixed height that meant 19 degrees at one resolution and 70 at another; the cut/fill tally
+assumed a cell radius that did not survive the corner rule reaching further. A constant that
+is really a ratio breaks silently the moment the thing it is a ratio of changes. The limit
+is now a slope and the per-sample step is derived from the spacing.
+
 ### Where they genuinely disagree
 
 **Mining downward from open ground.** The pick cuts the column below the surface, and the

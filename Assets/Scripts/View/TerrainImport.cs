@@ -270,6 +270,24 @@ namespace Terraform.View
                 pal.Pixels[i] = CopyPixels(layer.diffuseTexture, LayerCopySize);
             }
 
+            // Said out loud, because the symptom is otherwise indistinguishable from having
+            // imported no terrain at all: the ground just renders as flat colour. A terrain
+            // moved between projects loses its layer textures whenever the export brought the
+            // TerrainLayer assets without the images they point at -- the layers survive, the
+            // references dangle, and nothing complains.
+            int missing = 0;
+            for (int i = 0; i < layers.Length; i++)
+                if (layers[i] != null && layers[i].diffuseTexture == null) missing++;
+
+            if (missing > 0)
+            {
+                Debug.LogWarningFormat(
+                    "[TerrainImport] {0} of {1} terrain layers on '{2}' have no diffuse texture. " +
+                    "The baked surface will be flat colour. Re-export the TerrainData WITH " +
+                    "dependencies and keep the texture files.",
+                    missing, layers.Length, t.name);
+            }
+
             return pal;
         }
 
@@ -295,6 +313,289 @@ namespace Terraform.View
             Color32[] pixels = flat.GetPixels32();
             Object.Destroy(flat);
             return pixels;
+        }
+
+        /// <summary>
+        /// Which layer the source paints most heavily at a point, cached per tile.
+        ///
+        /// The splatmap is the only record of what the ground is actually MADE of. Without
+        /// it the material column underneath is invented -- a fixed depth of topsoil over a
+        /// fixed depth of subsoil, everywhere -- so a bare rock face reads as rock from
+        /// above and turns to grass and sand the moment anyone digs into it. The strata have
+        /// to start from what the surface already says.
+        /// </summary>
+        public sealed class Splat
+        {
+            Source _src;
+            readonly System.Collections.Generic.Dictionary<Terrain, float[,,]> _maps =
+                new System.Collections.Generic.Dictionary<Terrain, float[,,]>();
+
+            public TerrainLayer[] Layers { get; private set; }
+
+            public static Splat Build(Source src)
+            {
+                if (!src.Valid) return null;
+
+                var s = new Splat();
+                s._src = src;
+
+                var layers = new System.Collections.Generic.List<TerrainLayer>();
+
+                for (int i = 0; i < src.Tiles.Length; i++)
+                {
+                    TerrainLayer[] tl = src.Tiles[i].terrainData.terrainLayers;
+                    if (tl == null) continue;
+
+                    for (int j = 0; j < tl.Length; j++)
+                        if (tl[j] != null && !layers.Contains(tl[j])) layers.Add(tl[j]);
+                }
+
+                if (layers.Count == 0) return null;
+
+                s.Layers = layers.ToArray();
+                return s;
+            }
+
+            /// <summary>Name of the heaviest layer at a world position, lower-case. Empty if none.</summary>
+            public string DominantName(float worldX, float worldZ)
+            {
+                Terrain tile = TileAt(_src, worldX, worldZ);
+                if (tile == null) return string.Empty;
+
+                float[,,] map;
+                if (!_maps.TryGetValue(tile, out map))
+                {
+                    TerrainData td = tile.terrainData;
+                    map = td.GetAlphamaps(0, 0, td.alphamapWidth, td.alphamapHeight);
+                    _maps[tile] = map;
+                }
+
+                return DominantOn(tile, map, worldX, worldZ);
+            }
+        }
+
+        /// <summary>
+        /// Heaviest layer at a world position on ANY terrain, source or destination.
+        ///
+        /// Shared so the same question can be asked of both. When the ground looks like one
+        /// material and the strata beneath it are built from another, exactly one of two
+        /// things is wrong -- the reading, or the resample that produced what is drawn -- and
+        /// they need opposite fixes. Two readers with their own indexing arithmetic could
+        /// disagree without either being right; one reader cannot.
+        /// </summary>
+        public static string DominantOn(Terrain tile, float[,,] map, float worldX, float worldZ)
+        {
+            if (tile == null || map == null) return string.Empty;
+
+            Vector3 o = tile.transform.position;
+            Vector3 size = tile.terrainData.size;
+
+            int w = map.GetLength(1);
+            int h = map.GetLength(0);
+
+            int sx = Mathf.Clamp(Mathf.FloorToInt((worldX - o.x) / size.x * w), 0, w - 1);
+            int sz = Mathf.Clamp(Mathf.FloorToInt((worldZ - o.z) / size.z * h), 0, h - 1);
+
+            TerrainLayer[] tl = tile.terrainData.terrainLayers;
+            if (tl == null) return string.Empty;
+
+            int count = Mathf.Min(tl.Length, map.GetLength(2));
+
+            int best = -1;
+            float bestWeight = 0f;
+
+            for (int i = 0; i < count; i++)
+            {
+                if (map[sz, sx, i] <= bestWeight) continue;
+                bestWeight = map[sz, sx, i];
+                best = i;
+            }
+
+            if (best < 0 || tl[best] == null || tl[best].diffuseTexture == null) return string.Empty;
+            return tl[best].diffuseTexture.name.ToLowerInvariant();
+        }
+
+        /// <summary>Where a source tile actually sits, for checking a window maps onto it.</summary>
+        public static string TileBounds(Source src, float worldX, float worldZ)
+        {
+            Terrain t = TileAt(src, worldX, worldZ);
+            if (t == null) return "no tile";
+
+            Vector3 o = t.transform.position;
+            Vector3 size = t.terrainData.size;
+
+            bool inside = worldX >= o.x && worldX <= o.x + size.x
+                       && worldZ >= o.z && worldZ <= o.z + size.z;
+
+            return string.Format("tile {0:0}..{1:0} x {2:0}..{3:0}{4}",
+                                 o.x, o.x + size.x, o.z, o.z + size.z,
+                                 inside ? "" : "  OUTSIDE - clamped");
+        }
+
+        /// <summary>Heaviest layer actually painted on a terrain, read fresh.</summary>
+        public static string DominantDrawn(Terrain t, float worldX, float worldZ)
+        {
+            if (t == null || t.terrainData == null) return string.Empty;
+
+            TerrainData d = t.terrainData;
+            float[,,] map = d.GetAlphamaps(0, 0, d.alphamapWidth, d.alphamapHeight);
+
+            return DominantOn(t, map, worldX, worldZ);
+        }
+
+        /// <summary>
+        /// The diffuse textures the source paints with, in its own layer order.
+        ///
+        /// Dug ground has to be made of something, and inventing a flat colour for it puts a
+        /// painted patch in the middle of a photographed hillside -- which reads worse than
+        /// no texture at all, because the eye has something to compare it against.
+        /// Borrowing the terrain's own materials keeps the hole made of the same earth as
+        /// the ground it is cut into.
+        /// </summary>
+        public static Texture2D[] LayerTextures(Source src)
+        {
+            if (!src.Valid) return null;
+
+            var found = new System.Collections.Generic.List<Texture2D>();
+
+            for (int i = 0; i < src.Tiles.Length; i++)
+            {
+                TerrainLayer[] layers = src.Tiles[i].terrainData.terrainLayers;
+                if (layers == null) continue;
+
+                for (int j = 0; j < layers.Length; j++)
+                {
+                    if (layers[j] == null || layers[j].diffuseTexture == null) continue;
+                    if (!found.Contains(layers[j].diffuseTexture)) found.Add(layers[j].diffuseTexture);
+                }
+            }
+
+            return found.Count == 0 ? null : found.ToArray();
+        }
+
+        /// <summary>
+        /// Give a destination Unity Terrain the source's own terrain layers, and resample its
+        /// splatmap into the window.
+        ///
+        /// This is the alternative to BakeDiffuse, and it is available for exactly one reason:
+        /// a Unity Terrain blends multiple layers natively. The bake exists because the custom
+        /// mesh is one material, so the layers have to be flattened into a single texture --
+        /// and flattening throws away everything that made them worth having. A 2048 bake over
+        /// 256 m is 8 pixels per metre, where the source tiles its textures at hundreds. The
+        /// result is correct colour and no detail whatsoever.
+        ///
+        /// Here nothing needs flattening. The layers keep their own tiling, their normal maps,
+        /// and their smoothness, and the standard terrain shader does the blending -- so no
+        /// custom shader has to survive into a build either.
+        ///
+        /// The layer ASSETS are shared with the source, never modified: writing to them would
+        /// permanently edit the imported files.
+        ///
+        /// Returns false when the source has no layers, leaving the caller to fall back.
+        /// </summary>
+        public static bool ApplyLayers(Terrain dest, Source src, Vector2 origin, float stride)
+        {
+            if (dest == null || dest.terrainData == null || !src.Valid) return false;
+
+            // One combined layer list, so tiles that share a layer share a channel.
+            var layers = new System.Collections.Generic.List<TerrainLayer>();
+            var channel = new System.Collections.Generic.Dictionary<TerrainLayer, int>();
+
+            for (int i = 0; i < src.Tiles.Length; i++)
+            {
+                TerrainLayer[] tileLayers = src.Tiles[i].terrainData.terrainLayers;
+                if (tileLayers == null) continue;
+
+                for (int j = 0; j < tileLayers.Length; j++)
+                {
+                    TerrainLayer layer = tileLayers[j];
+                    if (layer == null || channel.ContainsKey(layer)) continue;
+
+                    channel[layer] = layers.Count;
+                    layers.Add(layer);
+                }
+            }
+
+            if (layers.Count == 0) return false;
+
+            // Copies, with smoothness and metallic taken out. The source layers are authored
+            // for a different pipeline and arrive glossy enough to make a hillside look wet;
+            // editing them in place would permanently alter the imported assets, which in the
+            // editor means altering files on disk. Instantiate leaves the originals alone.
+            for (int i = 0; i < layers.Count; i++)
+            {
+                TerrainLayer copy = Object.Instantiate(layers[i]);
+                copy.name = layers[i].name + " (matte)";
+                copy.smoothness = 0f;
+                copy.metallic = 0f;
+                layers[i] = copy;
+            }
+
+            TerrainData data = dest.terrainData;
+            data.terrainLayers = layers.ToArray();
+
+            int res = data.alphamapResolution;
+            var weights = new float[res, res, layers.Count];
+
+            float spanX = data.size.x;
+            float spanZ = data.size.z;
+
+            var cache = new System.Collections.Generic.Dictionary<Terrain, float[,,]>();
+
+            for (int z = 0; z < res; z++)
+            {
+                float v = (z + 0.5f) / res;
+
+                for (int x = 0; x < res; x++)
+                {
+                    float u = (x + 0.5f) / res;
+
+                    float wx = origin.x + u * spanX * stride;
+                    float wz = origin.y + v * spanZ * stride;
+
+                    Terrain tile = TileAt(src, wx, wz);
+                    if (tile == null) continue;
+
+                    float[,,] source;
+                    if (!cache.TryGetValue(tile, out source))
+                    {
+                        TerrainData td = tile.terrainData;
+                        source = td.GetAlphamaps(0, 0, td.alphamapWidth, td.alphamapHeight);
+                        cache[tile] = source;
+                    }
+
+                    TerrainLayer[] tileLayers = tile.terrainData.terrainLayers;
+                    if (tileLayers == null || source == null) continue;
+
+                    Vector3 tileOrigin = tile.transform.position;
+                    Vector3 tileSize = tile.terrainData.size;
+
+                    int aw = source.GetLength(1);
+                    int ah = source.GetLength(0);
+
+                    int sx = Mathf.Clamp(Mathf.FloorToInt((wx - tileOrigin.x) / tileSize.x * aw), 0, aw - 1);
+                    int sz = Mathf.Clamp(Mathf.FloorToInt((wz - tileOrigin.z) / tileSize.z * ah), 0, ah - 1);
+
+                    int count = Mathf.Min(tileLayers.Length, source.GetLength(2));
+
+                    for (int j = 0; j < count; j++)
+                    {
+                        TerrainLayer layer = tileLayers[j];
+                        if (layer == null) continue;
+
+                        int c;
+                        if (!channel.TryGetValue(layer, out c)) continue;
+
+                        weights[z, x, c] = source[sz, sx, j];
+                    }
+                }
+            }
+
+            data.SetAlphamaps(0, 0, weights);
+
+            Debug.LogFormat("[TerrainImport] {0} terrain layers applied live, splatmap resampled to {1}x{1}.",
+                            layers.Count, res);
+            return true;
         }
 
         /// <summary>
@@ -355,6 +656,14 @@ namespace Terraform.View
                     if (c.a <= 0f) continue;
 
                     painted = true;
+
+                    // Alpha forced to zero. In these source sets the diffuse alpha carries
+                    // SMOOTHNESS, not coverage -- the textures are named A_SM for exactly
+                    // that -- and Unity terrain shaders read smoothness from the splat
+                    // alpha, so passing it through varnished the whole landscape. Zero is
+                    // fully rough, which is what soil and grass are. Coverage was already
+                    // decided by the test above, so nothing is lost.
+                    c.a = 0f;
                     pixels[py * resolution + px] = c;
                 }
             }

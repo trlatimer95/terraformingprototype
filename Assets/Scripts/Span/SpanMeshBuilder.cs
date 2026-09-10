@@ -57,6 +57,18 @@ namespace Terraform.Span
         /// the seam solved in position and given straight back in light.
         /// </summary>
         Vector3 CornerNormal(int cx, int cz, int dx, int dz);
+
+        /// <summary>
+        /// Should the span mesher draw the ground here, or does the surface still draw it
+        /// itself?
+        ///
+        /// A tunnel under intact ground needs no opening: the surface above it is untouched,
+        /// and whatever owns the surface is better at drawing it. Emitting a cap there too
+        /// puts two coplanar surfaces in the same place -- and where the surface has real
+        /// splat layers and the cap has a flattened bake, the ground visibly reverts to a
+        /// blurrier version of itself wherever anyone digs beneath it.
+        /// </summary>
+        bool DrawSurfaceCap(int cx, int cz);
     }
 
     public static class SpanMeshBuilder
@@ -98,6 +110,33 @@ namespace Terraform.Span
         /// </summary>
         static readonly List<Vector2> Uvs = new List<Vector2>();
         static Vector3 UvOrigin;
+
+        /// <summary>
+        /// World-space UVs chosen from the face direction, so a texture lies correctly on
+        /// every orientation without a triplanar shader.
+        ///
+        /// Planar XZ alone is meaningful on ground and meaningless on a wall: a vertical face
+        /// has almost no variation in X and Z, so the whole thing collapses onto a single
+        /// texel and renders as one flat smear. That is what looked like a missing texture.
+        ///
+        /// The mesher already knows which way each face points, so it can pick the right pair
+        /// of axes as it writes them. A shader would have to work it out per pixel, and a
+        /// custom shader is another thing that has to survive into a player build.
+        /// </summary>
+        static Vector2 PlanarUv(Vector3 local, Vector3 normal)
+        {
+            float wx = local.x + UvOrigin.x;
+            float wy = local.y + UvOrigin.y;
+            float wz = local.z + UvOrigin.z;
+
+            float ax = Mathf.Abs(normal.x);
+            float ay = Mathf.Abs(normal.y);
+            float az = Mathf.Abs(normal.z);
+
+            if (ay >= ax && ay >= az) return new Vector2(wx, wz);   // floors and ceilings
+            if (ax >= az) return new Vector2(wz, wy);               // walls facing x
+            return new Vector2(wx, wy);                             // walls facing z
+        }
         static readonly List<int>[] Tris = new List<int>[SpanMaterials.Count];
 
         /// <summary>Remnants of one span after a neighbour's solid is subtracted from it.</summary>
@@ -159,7 +198,14 @@ namespace Terraform.Span
                         // this is an open cap and smoothing is on.
                         float y00 = flat, y10 = flat, y11 = flat, y01 = flat;
 
-                        if (!solidAbove && Smooth)
+                        // A cap sitting at the surface follows the surface whether or not
+                        // caves are being smoothed. Smoothing is a choice about how DUG rock
+                        // should look; the ground above it is not ours to restyle, and
+                        // letting exact mode flatten it would open the seam along every
+                        // opening the moment somebody turned smoothing off.
+                        bool ownSurface = Surface != null && Surface.TopMm(cx, cz) == s.TopMm;
+
+                        if (!solidAbove && (Smooth || ownSurface))
                         {
                             y00 = Corner(grid, cx, cz, 0, 0, s.TopMm, localOrigin.y);
                             y10 = Corner(grid, cx, cz, 1, 0, s.TopMm, localOrigin.y);
@@ -173,10 +219,16 @@ namespace Terraform.Span
 
                         if (!solidAbove)
                         {
-                            if (Surface != null && Surface.TopMm(cx, cz) == s.TopMm)
-                                SurfaceCap(wx, wz, size, y00, y10, y11, y01, s.Material, swap, cx, cz);
+                            if (ownSurface)
+                            {
+                                // Only when nothing else is covering it.
+                                if (Surface.DrawSurfaceCap(cx, cz))
+                                    SurfaceCap(wx, wz, size, y00, y10, y11, y01, s.Material, swap, cx, cz);
+                            }
                             else
+                            {
                                 Cap(wx, wz, size, y00, y10, y11, y01, s.Material, true, swap);
+                            }
                         }
 
                         // No downward face on bedrock. It would be two triangles per column
@@ -399,6 +451,11 @@ namespace Terraform.Span
             var c = new Vector3(wx + size, y11, wz + size);
             var d = new Vector3(wx, y01, wz + size);
 
+            // Drawn in the surface slot, not the span's own material: this is ground the
+            // terrain would still be drawing if its hole mask were finer, so it has to be
+            // skinned like the terrain rather than like the soil underneath it.
+            material = SpanMaterials.SurfaceSkin;
+
             Vector3 na = Surface.CornerNormal(cx, cz, 0, 0);
             Vector3 nb = Surface.CornerNormal(cx, cz, 1, 0);
             Vector3 nc = Surface.CornerNormal(cx, cz, 1, 1);
@@ -423,6 +480,12 @@ namespace Terraform.Span
         static void SmoothTriangle(Vector3 p0, Vector3 p1, Vector3 p2,
                                    Vector3 n0, Vector3 n1, Vector3 n2, byte material)
         {
+            // Dropped, not drawn with a fallback normal. A zero-area triangle contributes
+            // nothing visible, but PhysX refuses to cook a mesh containing them and reports
+            // "cleaning the mesh failed" -- which loses the whole collider, not just the
+            // sliver. Caps whose corners collapse onto one height produce these routinely.
+            if (Degenerate(p0, p1, p2)) return;
+
             if (Vector3.Dot(Vector3.Cross(p1 - p0, p2 - p0), n0) < 0f)
             {
                 Vector3 sp = p1; p1 = p2; p2 = sp;
@@ -434,9 +497,9 @@ namespace Terraform.Span
             Verts.Add(p0); Verts.Add(p1); Verts.Add(p2);
             Normals.Add(n0); Normals.Add(n1); Normals.Add(n2);
 
-            Uvs.Add(new Vector2(p0.x + UvOrigin.x, p0.z + UvOrigin.z));
-            Uvs.Add(new Vector2(p1.x + UvOrigin.x, p1.z + UvOrigin.z));
-            Uvs.Add(new Vector2(p2.x + UvOrigin.x, p2.z + UvOrigin.z));
+            Uvs.Add(PlanarUv(p0, n0));
+            Uvs.Add(PlanarUv(p1, n1));
+            Uvs.Add(PlanarUv(p2, n2));
 
             List<int> tris = Tris[material < Tris.Length ? material : 0];
             tris.Add(i); tris.Add(i + 1); tris.Add(i + 2);
@@ -531,19 +594,24 @@ namespace Terraform.Span
                 // stopping at a raw span boundary leaves a slot beside a cap that has already
                 // tilted away from it -- the see-through along a ramp edge, and the same
                 // thing again along a tunnel ceiling.
-                if (Smooth && grid.InBounds(nx, nz))
+                if (grid.InBounds(nx, nz))
                 {
                     if (!trough)
                     {
                         int nTop = Exposed[i].x;
-                        if (grid.OpenTopNear(nx, nz, nTop) == nTop)
+
+                        // Same reason as the cap above: a wall whose foot lands on ground the
+                        // surface owns has to meet that ground, in either mode.
+                        bool nSurface = Surface != null && Surface.TopMm(nx, nz) == nTop;
+
+                        if ((Smooth || nSurface) && grid.OpenTopNear(nx, nz, nTop) == nTop)
                         {
                             botA = Corner(grid, nx, nz, naX, naZ, nTop, localY);
                             botB = Corner(grid, nx, nz, nbX, nbZ, nTop, localY);
                         }
                     }
 
-                    if (!crest)
+                    if (Smooth && !crest)
                     {
                         int nBottom = Exposed[i].y;
                         if (grid.OpenBottomNear(nx, nz, nBottom) == nBottom)
@@ -602,11 +670,22 @@ namespace Terraform.Span
         /// Normals come from the geometry, not the nominal facing, so a tilted cap shades as
         /// the slope it is rather than as the flat quad it used to be.
         /// </summary>
+        /// <summary>
+        /// Too thin to cook. The threshold is on the cross product, which is twice the area,
+        /// so this rejects slivers as well as exact duplicates -- PhysX objects to both.
+        /// </summary>
+        static bool Degenerate(Vector3 p0, Vector3 p1, Vector3 p2)
+        {
+            return Vector3.Cross(p1 - p0, p2 - p0).sqrMagnitude < 1e-10f;
+        }
+
         static void Triangle(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 fallback, byte material)
         {
             Vector3 normal = Vector3.Cross(p1 - p0, p2 - p0);
 
-            normal = normal.sqrMagnitude < 1e-12f ? fallback : normal.normalized;
+            if (normal.sqrMagnitude < 1e-10f) return;
+
+            normal = normal.normalized;
             if (Vector3.Dot(normal, fallback) < 0f) normal = -normal;
 
             int i = Verts.Count;
@@ -614,9 +693,9 @@ namespace Terraform.Span
             Verts.Add(p0); Verts.Add(p1); Verts.Add(p2);
             Normals.Add(normal); Normals.Add(normal); Normals.Add(normal);
 
-            Uvs.Add(new Vector2(p0.x + UvOrigin.x, p0.z + UvOrigin.z));
-            Uvs.Add(new Vector2(p1.x + UvOrigin.x, p1.z + UvOrigin.z));
-            Uvs.Add(new Vector2(p2.x + UvOrigin.x, p2.z + UvOrigin.z));
+            Uvs.Add(PlanarUv(p0, normal));
+            Uvs.Add(PlanarUv(p1, normal));
+            Uvs.Add(PlanarUv(p2, normal));
 
             List<int> tris = Tris[material < Tris.Length ? material : 0];
             tris.Add(i); tris.Add(i + 1); tris.Add(i + 2);
